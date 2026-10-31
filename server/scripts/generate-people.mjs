@@ -1,7 +1,7 @@
 // Generates the people database: server/data/people.json
 //
-//   npm run generate:people              (1500 people, seed 1031)
-//   node scripts/generate-people.mjs 3000 42
+//   npm run generate:people              (3000 people, seed 1031)
+//   node server/scripts/generate-people.mjs 3000 42
 //
 // The output is deterministic for a given count + seed, so the database only changes when you
 // regenerate it on purpose. Everyone is fictional.
@@ -9,8 +9,9 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CITIES } from '../data/cities.js';
+import { FIRST_NAMES, LAST_NAMES, formatName, lastNameFor } from '../data/names.js';
 
-const COUNT = Number(process.argv[2] ?? 1500);
+const COUNT = Number(process.argv[2] ?? 3000);
 const SEED = Number(process.argv[3] ?? 1031);
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'data', 'people.json');
 
@@ -23,22 +24,66 @@ function rnd() {
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 }
 const pick = (a) => a[Math.floor(rnd() * a.length)];
+
+/** Pick an item with probability proportional to weight(item). */
+function pickWeighted(items, weight) {
+  const total = items.reduce((sum, x) => sum + weight(x), 0);
+  let r = rnd() * total;
+  for (const x of items) {
+    r -= weight(x);
+    if (r < 0) return x;
+  }
+  return items[items.length - 1];
+}
 const between = (a, b) => a + rnd() * (b - a);
 
 /* ---------- ingredients ---------- */
-const FIRST = [
-  'Ada', 'Amir', 'Aiko', 'Amara', 'Anya', 'Bea', 'Bruno', 'Chen', 'Chloé', 'Ciaran', 'Dmitri', 'Dara', 'Diego', 'Elif',
-  'Emeka', 'Esme', 'Farah', 'Freya', 'Gustavo', 'Hana', 'Hugo', 'Ines', 'Ivan', 'Jun', 'Jonas', 'Kofi', 'Kira', 'Lena',
-  'Luca', 'Lior', 'Maya', 'Mateo', 'Mei', 'Nadia', 'Noah', 'Nkechi', 'Olu', 'Orla', 'Priya', 'Pavel', 'Quinn', 'Rosa',
-  'Rafael', 'Sven', 'Sana', 'Tariq', 'Tomás', 'Uma', 'Vera', 'Viktor', 'Wei', 'Wren', 'Ximena', 'Yusuf', 'Yara', 'Zara',
-  'Zoltan', 'Edgar', 'Morticia', 'Vlad', 'Ichabod', 'Lenore', 'Boris', 'Agatha', 'Silas', 'Hester', 'Ezra', 'Odile',
-];
-const LAST = [
-  'Abara', 'Bergström', 'Castillo', 'Dubois', 'Eriksen', 'Fujita', 'García', 'Haddad', 'Ivanova', 'Jansen', 'Kowalski',
-  'Li', 'Mbeki', 'Nakamura', 'Okafor', 'Petrov', 'Quispe', 'Rossi', 'Silva', 'Tanaka', 'Usman', 'Varga', 'Wójcik', 'Xu',
-  'Yilmaz', 'Zhang', 'Mensah', 'Novak', 'Oyelaran', 'Park', 'Reyes', 'Sato', 'Torres', 'Volkov', 'Weiss', 'Kaur',
-  'Poe', 'Crane', 'Graves', 'Blackwood', 'Hollow', 'Ashworth', 'Thorne', 'Marsh', 'Nightingale', 'Vale', 'Wick', 'Moor',
-];
+/* ---------- names ---------- */
+const appliesTo = (entry, city) => entry.cities.includes(city);
+
+/** Last names that fit this city and this first name's culture and gender. */
+function lastNamesFor(first, city) {
+  return LAST_NAMES.filter(
+      (l) => appliesTo(l, city) && first.with.includes(l.culture) && lastNameFor(l, first.gender),
+  );
+}
+
+/** Pick a first name that fits the city, then a last name that fits both. */
+function nameFor(city) {
+  const first = pick(FIRST_NAMES.filter((f) => appliesTo(f, city)));
+  const options = lastNamesFor(first, city);
+  const last = pick(options);
+  const parts = [lastNameFor(last, first.gender)];
+  if (last.count === 2) {
+    // a second, different surname from the same culture (paternal + maternal)
+    const more = options.filter((l) => l.culture === last.culture && l !== last);
+    parts.push(lastNameFor(pick(more), first.gender));
+  }
+  return { name: formatName(first, parts, last), gender: first.gender };
+}
+
+/* Fail loudly if the name lists leave any city, or any first name, without a match. */
+function validate() {
+  const known = new Set(CITIES.map((c) => c.name));
+  const problems = [];
+  for (const e of [...FIRST_NAMES, ...LAST_NAMES]) {
+    for (const c of e.cities) if (!known.has(c)) problems.push(`unknown city "${c}" for ${JSON.stringify(e.name)}`);
+  }
+  for (const c of known) {
+    if (!FIRST_NAMES.some((f) => appliesTo(f, c))) problems.push(`no first names for ${c}`);
+  }
+  for (const f of FIRST_NAMES) {
+    for (const c of f.cities) {
+      if (!lastNamesFor(f, c).length) problems.push(`no last name fits ${f.name} (${f.culture}) in ${c}`);
+    }
+  }
+  if (problems.length) {
+    console.error([...new Set(problems)].join('\n'));
+    process.exit(1);
+  }
+}
+validate();
+
 const JOBS = [
   'baker', 'clockmaker', 'nurse', 'ferry pilot', 'teacher', 'beekeeper', 'courier', 'tailor', 'mechanic', 'lamplighter',
   'librarian', 'fisher', 'brewer', 'gardener', 'painter', 'farmer', 'taxi driver', 'accountant', 'chef', 'electrician',
@@ -66,12 +111,12 @@ const round = (n, d) => Math.round(n * 10 ** d) / 10 ** d;
 const used = new Set();
 const people = [];
 for (let i = 0; i < COUNT; i++) {
-  let name;
-  do name = `${pick(FIRST)} ${pick(LAST)}`;
-  while (used.has(name) && used.size < FIRST.length * LAST.length);
-  used.add(name);
+  // location first (bigger cities are more likely), then a name that fits it
+  const city = pickWeighted(CITIES, (c) => c.population);
+  let who = nameFor(city.name);
+  for (let tries = 0; used.has(who.name) && tries < 50; tries++) who = nameFor(city.name);
+  used.add(who.name);
 
-  const city = pick(CITIES);
   const job = pick(JOBS);
   const habit = pick(HABITS);
   const month = 1 + Math.floor(rnd() * 12);
@@ -79,7 +124,8 @@ for (let i = 0; i < COUNT; i++) {
 
   people.push({
     id: 'p' + String(i + 1).padStart(4, '0'),
-    name,
+    name: who.name,
+    gender: who.gender,
     job,
     bio: `Works as a ${job} in ${city.name} and ${habit}.`,
     city: city.name,

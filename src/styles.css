@@ -67,8 +67,8 @@ strong { font-weight: 600; color: var(--bone); }
   place-items: center;
   padding: 32px 16px;
   background:
-    radial-gradient(ellipse at 50% -10%, #2a2140 0%, transparent 60%),
-    var(--bg);
+          radial-gradient(ellipse at 50% -10%, #2a2140 0%, transparent 60%),
+          var(--bg);
 }
 .setup-card {
   width: 100%;
@@ -100,6 +100,7 @@ select { width: 100%; padding: 9px 10px; background: var(--panel-2); border: 1px
 .bell-line { fill: none; stroke: var(--bone); stroke-width: 1.5; }
 .bell-mark { stroke: var(--blood); stroke-width: 1.5; stroke-dasharray: 3 3; }
 .bell text { fill: var(--faint); font: 10px var(--font-mono); }
+.bell .bell-note { fill: var(--muted); font: 10px var(--font-body); }
 .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .seg button { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 6px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .seg button small { font-size: 11px; color: var(--faint); }
