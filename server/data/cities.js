@@ -70,7 +70,7 @@ export const CITIES = [
   ['Singapore', 'Singapore', 1.35, 103.82, 'Asia/Singapore', 5_000_000],
   ['Jakarta', 'Indonesia', -6.21, 106.85, 'Asia/Jakarta', 41_900_000],
   ['Manila', 'Philippines', 14.6, 120.98, 'Asia/Manila', 24_700_000],
-  ['Hong Kong', 'China', 22.32, 114.17, 'Asia/Hong_Kong', 4_700_000],
+  ['Hong Kong', 'Hong Kong SAR', 22.32, 114.17, 'Asia/Hong_Kong', 4_700_000],
   ['Shanghai', 'China', 31.23, 121.47, 'Asia/Shanghai', 29_600_000],
   ['Beijing', 'China', 39.9, 116.4, 'Asia/Shanghai', 17_000_000],
   ['Chengdu', 'China', 30.57, 104.07, 'Asia/Shanghai', 6_100_000],
