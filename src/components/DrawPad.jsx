@@ -168,7 +168,7 @@ export default function DrawPad({ person, canStillReap, unlocked, balance, onBuy
     setBusy(true);
     setOk(true);
     setInfo(`Recognized: ${d.icon} ${d.name}${saw ? ` (“${saw}”)` : ''}`);
-    await new Promise((res) => setTimeout(res, 1300));
+    await new Promise((res) => setTimeout(res, 700));
     if (!alive.current) return;
     onUnleash(tool, saw, true);
   }

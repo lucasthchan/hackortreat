@@ -254,6 +254,10 @@ export function createCinema(canvas, flashEl) {
     if (rpg) {
       const w = 1 + 0.05 * R.sin(T * 3);
       rpg.userData.cl.forEach((c) => c.scale.set(w * c.userData.k, c.userData.k, w * c.userData.k));
+      (rpg.userData.rags || []).forEach((r) => {
+        r.rotation.x = 0.25 * R.sin(T * 2.2 + r.userData.ph);
+        r.rotation.z = 0.12 * R.sin(T * 1.7 + r.userData.ph);
+      });
     }
     if (flick) lamp.intensity = 1 + 0.25 * R.sin(T * 17) + 0.1 * R.sin(T * 41);
     renderer.render(cscene, ccam);
@@ -528,35 +532,214 @@ export function createCinema(canvas, flashEl) {
     return g;
   }
 
+  function mkS(c, o) {
+    const m = new THREE.MeshStandardMaterial(Object.assign({ color: c, transparent: true, roughness: 0.9, metalness: 0 }, o || {}));
+    m.userData.o = m.opacity;
+    fadeMats.push(m);
+    return m;
+  }
+  /** A cylinder running from point a to point b (r1 at a, r2 at b). */
+  function between(a, b, r1, r2, m, open = false) {
+    const d = b.clone().sub(a);
+    const me = new THREE.Mesh(new THREE.CylinderGeometry(r1, r2, d.length(), 16, 1, open), m);
+    me.position.copy(a).add(b).multiplyScalar(0.5);
+    me.quaternion.setFromUnitVectors(V(0, 1, 0), d.normalize());
+    return me;
+  }
+  /** A skeletal hand; fingers point down -y, `curl` bends every joint. */
+  function boneHand(bone, curl, spread = 0.12) {
+    const h = new THREE.Group();
+    const palm = new THREE.Mesh(new THREE.BoxGeometry(0.052, 0.06, 0.016), bone);
+    palm.position.y = -0.03;
+    h.add(palm);
+    for (let i = 0; i < 4; i++) {
+      let p = new THREE.Group();
+      p.position.set(-0.02 + i * 0.0135, -0.058, 0);
+      p.rotation.set(curl, 0, (i - 1.5) * -spread);
+      h.add(p);
+      [0.034, 0.028, 0.022].forEach((len, j) => {
+        const seg = new THREE.Mesh(new THREE.CylinderGeometry(0.0055, 0.0065, len, 6), bone);
+        seg.position.y = -len / 2;
+        const kn = new THREE.Mesh(new THREE.SphereGeometry(0.0078, 6, 5), bone);
+        p.add(seg, kn);
+        if (j < 2) {
+          const n = new THREE.Group();
+          n.position.y = -len;
+          n.rotation.x = curl;
+          p.add(n);
+          p = n;
+        }
+      });
+    }
+    const th = new THREE.Group();
+    th.position.set(0.03, -0.02, 0.008);
+    th.rotation.set(curl * 0.6, 0, 0.7);
+    [0.03, 0.025].forEach((len, j) => {
+      const seg = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.007, len, 6), bone);
+      seg.position.y = -len / 2 - j * 0.03;
+      th.add(seg);
+    });
+    h.add(th);
+    return h;
+  }
   function makeReaper() {
     const g = new THREE.Group();
-    const dark = mk(0x07030c, { side: THREE.DoubleSide });
-    const rim = mk(0x8a50c8, { side: THREE.BackSide });
-    const eye = new THREE.MeshBasicMaterial({ color: 0xffd060 });
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.34, 1.3, 20, 1, true), dark);
-    const c2 = new THREE.Mesh(new THREE.ConeGeometry(0.34, 1.3, 20, 1, true), rim);
-    cone.position.y = c2.position.y = 0.65;
-    cone.userData.k = 1;
-    c2.userData.k = 1.1;
-    const hood = new THREE.Mesh(new THREE.SphereGeometry(0.22, 18, 14), dark);
-    const h2 = new THREE.Mesh(new THREE.SphereGeometry(0.22, 18, 14), rim);
-    hood.position.y = h2.position.y = 1.38;
-    h2.scale.setScalar(1.14);
-    const e1 = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), eye);
-    const e2 = e1.clone();
-    e1.position.set(-0.08, 1.38, 0.19);
-    e2.position.set(0.08, 1.38, 0.19);
+    const cloth = mkS(0x0e0b12, { side: THREE.DoubleSide, roughness: 1 });
+    const rimCloth = mk(0x34224c, { side: THREE.BackSide });
+    const voidM = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.BackSide, transparent: true });
+    voidM.userData.o = 1;
+    fadeMats.push(voidM);
+    const bone = mkS(0xc4b89c, { roughness: 0.85 }); // aged bone
+    const hole = new THREE.MeshBasicMaterial({ color: 0x050307, transparent: true });
+    hole.userData.o = 1;
+    fadeMats.push(hole);
+
+    /* robe: a lathe with vertical folds and a torn, uneven hem */
+    const prof = [[0.47, 0.0], [0.45, 0.18], [0.4, 0.45], [0.34, 0.75], [0.29, 1.0], [0.26, 1.15], [0.22, 1.25], [0.14, 1.32], [0.07, 1.36]]
+      .map(([r, y]) => new THREE.Vector2(r, y));
+    const rg = new THREE.LatheGeometry(prof, 72);
+    const pos = rg.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      const a = R.atan2(z, x);
+      const r = R.hypot(x, z);
+      const fold = (R.sin(a * 11 + R.sin(y * 3) * 0.9) * 0.6 + R.sin(a * 5 + 1.3) * 0.4) * 0.028 * (1.3 - y / 1.36);
+      let ny = y;
+      if (y < 0.02) {
+        const rag = R.sin(a * 7) * 0.5 + R.sin(a * 13 + 1) * 0.35 + R.sin(a * 23 + 2) * 0.15;
+        ny = y + R.max(0, rag) * 0.16;
+      }
+      const k = r > 0 ? (r + fold) / r : 1;
+      pos.setXYZ(i, x * k, ny, z * k);
+    }
+    rg.computeVertexNormals();
+    const robe = new THREE.Mesh(rg, cloth);
+    const robeRim = new THREE.Mesh(rg, rimCloth);
+    robe.userData.k = 1;
+    robeRim.userData.k = 1.035;
+
+    /* broad shoulders under the hood */
+    const mantle = new THREE.Mesh(new THREE.SphereGeometry(0.27, 28, 12, 0, PI * 2, 0, PI * 0.5), cloth);
+    mantle.scale.set(1, 0.45, 0.85);
+    mantle.position.y = 1.2;
+
+    /* hanging rags at the hem that sway */
+    const rags = [];
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * PI * 2 + 0.3;
+      const piv = new THREE.Group();
+      piv.position.set(R.cos(a) * 0.43, 0.14, R.sin(a) * 0.43);
+      piv.rotation.y = -a + PI / 2;
+      const len = 0.16 + (i % 3) * 0.05;
+      const rag = new THREE.Mesh(new THREE.PlaneGeometry(0.07, len), cloth);
+      rag.position.y = -len / 2;
+      piv.add(rag);
+      piv.userData.ph = i * 1.7;
+      rags.push(piv);
+    }
+
+    /* hood: an open-fronted shell with a pointed back, a lip around the opening and a black inside */
+    const hoodG = new THREE.Group();
+    hoodG.position.set(0, 1.47, -0.01);
+    const shell = new THREE.Mesh(new THREE.SphereGeometry(0.25, 32, 20, PI / 2 + 0.75, PI * 2 - 1.5, 0, PI * 0.8), cloth);
+    shell.scale.set(1, 1.15, 1.12);
+    const inner = new THREE.Mesh(new THREE.SphereGeometry(0.235, 24, 16), voidM);
+    inner.scale.set(0.95, 1.1, 1.05);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.3, 14), cloth);
+    tip.position.set(0, 0.16, -0.2);
+    tip.rotation.x = -1.15;
+    const lip = new THREE.Mesh(new THREE.TorusGeometry(0.19, 0.028, 8, 28, PI * 1.25), cloth);
+    lip.position.set(0, -0.02, 0.2);
+    lip.rotation.z = -PI * 0.125;
+    hoodG.add(inner, shell, tip, lip);
+
+    /* skull, set back in the hood */
+    const skull = new THREE.Group();
+    skull.position.set(0, 1.42, 0.085);
+    const cran = new THREE.Mesh(new THREE.SphereGeometry(0.115, 24, 18), bone);
+    cran.scale.set(0.88, 1, 0.95);
+    cran.position.y = 0.025;
+    const face = new THREE.Mesh(new THREE.SphereGeometry(0.082, 20, 14), bone);
+    face.scale.set(1, 0.85, 0.9);
+    face.position.set(0, -0.045, 0.035);
+    skull.add(cran, face);
+    [-1, 1].forEach((sx) => {
+      const sock = new THREE.Mesh(new THREE.SphereGeometry(0.03, 12, 10), hole);
+      sock.scale.set(1, 0.9, 0.6);
+      sock.position.set(sx * 0.04, 0.005, 0.093);
+      const ember = new THREE.Mesh(new THREE.SphereGeometry(0.0075, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff4a2a }));
+      ember.position.set(sx * 0.04, 0.003, 0.1);
+      const cheek = new THREE.Mesh(new THREE.SphereGeometry(0.022, 10, 8), bone);
+      cheek.position.set(sx * 0.058, -0.035, 0.07);
+      skull.add(sock, ember, cheek);
+    });
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.014, 0.034, 3), hole);
+    nose.position.set(0, -0.036, 0.11);
+    nose.rotation.x = PI;
+    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.03, 0.055), bone);
+    jaw.position.set(0, -0.112, 0.06);
+    const gap = new THREE.Mesh(new THREE.BoxGeometry(0.068, 0.006, 0.01), hole);
+    gap.position.set(0, -0.092, 0.1);
+    skull.add(nose, jaw, gap);
+    for (let i = 0; i < 7; i++) {
+      const x = (i - 3) * 0.0095;
+      const z = 0.098 - R.abs(i - 3) * 0.004;
+      const up = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.016, 0.006), bone);
+      up.position.set(x, -0.081, z);
+      const lo = up.clone();
+      lo.position.y = -0.103;
+      skull.add(up, lo);
+    }
+
+    /* scythe: curved wooden snath with two grips and a steel crescent blade */
     const sc = new THREE.Group();
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 2, 6), mk(0x4a3320));
-    const bl = new THREE.Mesh(new THREE.TorusGeometry(0.38, 0.04, 6, 22, PI * 0.85), mk(0xdfe6f8));
-    const gl = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), glowMat(0x9fb4ff, 0.5));
-    bl.position.set(-0.33, 1, 0);
-    bl.rotation.z = PI * 0.6;
-    gl.position.set(-0.5, 1.15, 0);
-    sc.add(pole, bl, gl);
-    sc.position.set(0.55, 1, 0.25);
-    g.add(c2, cone, h2, hood, e1, e2, sc);
-    g.userData = { cl: [cone, c2], sc };
+    const wood = mkS(0x4a3020, { roughness: 0.8 });
+    const snath = new THREE.Mesh(
+      new THREE.TubeGeometry(new THREE.CatmullRomCurve3([V(0, -1.05, 0), V(0.03, -0.35, 0), V(-0.02, 0.45, 0), V(0, 1.15, 0)]), 40, 0.019, 8),
+      wood,
+    );
+    const grip1 = between(V(0, 0.15, 0), V(0, 0.15, 0.13), 0.012, 0.012, wood);
+    const grip2 = between(V(0.02, -0.4, 0), V(0.02, -0.4, 0.11), 0.012, 0.012, wood);
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.07, 10), mkS(0x2a2a30, { metalness: 0.6, roughness: 0.4 }));
+    collar.position.y = 1.12;
+    const shape = new THREE.Shape();
+    shape.moveTo(0, 0.05);
+    shape.quadraticCurveTo(0.42, 0.26, 0.98, -0.16);
+    shape.quadraticCurveTo(0.5, 0.03, 0.0, -0.05);
+    shape.closePath();
+    const blade = new THREE.Mesh(
+      new THREE.ExtrudeGeometry(shape, { depth: 0.008, bevelEnabled: true, bevelThickness: 0.004, bevelSize: 0.006, bevelSegments: 1, curveSegments: 24 }),
+      mkS(0xc6ccd6, { metalness: 0.55, roughness: 0.28, emissive: 0x161a24 }),
+    );
+    blade.rotation.y = -PI / 2;
+    blade.position.set(0.004, 1.12, 0);
+    const edge = new THREE.Mesh(
+      new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(V(0, -0.05, 0), V(0, 0.03, 0.5), V(0, -0.16, 0.98)), 24, 0.004, 4),
+      new THREE.MeshBasicMaterial({ color: 0xeef3ff, transparent: true }),
+    );
+    edge.material.userData.o = 1;
+    fadeMats.push(edge.material);
+    edge.position.set(0, 1.12, 0);
+    const gl = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), glowMat(0x9fb4ff, 0.35));
+    gl.position.set(0, 1.18, 0.5);
+    sc.add(snath, grip1, grip2, collar, blade, edge, gl);
+    sc.position.set(0.36, 1.0, 0.2);
+
+    /* arms: wide sleeves with bony hands. One grips the scythe, one reaches forward */
+    const arm = (shoulder, wrist, curl, spread) => {
+      const grp = new THREE.Group();
+      grp.add(between(shoulder, wrist, 0.075, 0.125, cloth, true));
+      const h = boneHand(bone, curl, spread);
+      h.position.copy(wrist);
+      h.quaternion.setFromUnitVectors(V(0, -1, 0), wrist.clone().sub(shoulder).normalize());
+      grp.add(h);
+      return grp;
+    };
+    const armHold = arm(V(0.2, 1.24, 0), V(0.34, 1.02, 0.19), 0.9, 0.05);
+    const armReach = arm(V(-0.2, 1.24, 0.02), V(-0.14, 1.05, 0.42), 0.35, 0.2);
+
+    g.add(robeRim, robe, mantle, hoodG, skull, sc, armHold, armReach, ...rags);
+    g.userData = { cl: [robe, robeRim], sc, rags };
     return g;
   }
 
@@ -1526,6 +1709,7 @@ export function createCinema(canvas, flashEl) {
     const rp = add(new THREE.Group());
     const rg = makeReaper();
     rg.scale.setScalar(1.25);
+    rg.rotation.y = -0.55; // three-quarter view, so the skull in the hood faces the camera
     rp.add(rg);
     rpg = rg;
     rp.position.set(-9, 0, 0.8);

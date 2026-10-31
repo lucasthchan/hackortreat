@@ -229,4 +229,4 @@ export default function MapOverlay({ person, now, onAccept, onDelay, onReplay, o
         </div>
       </div>
   );
-}
+}
