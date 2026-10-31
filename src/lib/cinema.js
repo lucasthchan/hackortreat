@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { addStars, createTweens, ease } from './geo3d.js';
 import { TOOL_DEFS } from './sketch.js';
+import { lookFor } from './appearance.js';
 
 const R = Math;
 const PI = Math.PI;
@@ -10,6 +11,11 @@ const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const rnd = (a, b) => a + R.random() * (b - a);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const YEAR_MS = 365.2425 * 86400000;
+
+// In cinema.js, select from the line  <<<<<<< char_2  (line 14)
+// down to and including the line  >>>>>>> main  (line 172),
+// delete it, and paste everything BELOW this comment block in its place.
+// The line right after should be a lone  }  (that closes the function).
 
 /* =====================================================================
  * Looks: gender, region, age → a person's appearance
@@ -102,10 +108,15 @@ export function appearance(person) {
   const r = seeded(p.id);
   const pick = (arr) => arr[Math.floor(r() * arr.length)];
   const chance = (x) => r() < x;
+  // The backend may save a look per person ({ skin, hair, hairStyle, shirt, pants, height, build, gender }).
+  // Anything it saved wins; anything missing is worked out here from gender, age and region.
+  const l = p.look ?? {};
+  const hex = (v) => (v == null ? null : typeof v === 'number' ? v : parseInt(String(v).replace('#', ''), 16));
 
   const first = String(p.name || '').split(' ')[0].toLowerCase();
-  const gender = p.gender === 'female' || p.gender === 'male'
-    ? p.gender
+  const g0 = l.gender ?? p.gender;
+  const gender = g0 === 'female' || g0 === 'male'
+    ? g0
     : FEMALE.has(first) ? 'female' : MALE.has(first) ? 'male' : chance(0.5) ? 'female' : 'male';
   const F = gender === 'female';
 
@@ -114,8 +125,8 @@ export function appearance(person) {
   const old = age >= 78;
 
   const region = regionOf(p);
-  const skin = pick(chance(0.1) ? REGION_SKIN.mixed : REGION_SKIN[region]);
-  let hair = HAIR_C[pick(REGION_HAIR[region] || REGION_HAIR.default)];
+  const skin = hex(l.skin) ?? pick(chance(0.1) ? REGION_SKIN.mixed : REGION_SKIN[region]);
+  let hair = hex(l.hair) ?? HAIR_C[pick(REGION_HAIR[region] || REGION_HAIR.default)];
   if (stage === 'elder') hair = old ? 0xe2e2e4 : chance(0.5) ? 0x9a9a9e : 0xbdbdc0;
   else if (stage === 'adult' && age > 48 && chance(0.4)) hair = 0x8a8a8e;
   const eye = EYE_C[pick(REGION_EYES[region] || REGION_EYES.default)];
@@ -133,6 +144,7 @@ export function appearance(person) {
       : pick(['short', 'short', 'crop', 'side', curlyLikely ? 'curly' : 'short']);
     if (curlyLikely && hairStyle !== 'bald' && chance(0.4)) hairStyle = 'curly';
   }
+  if (l.hairStyle) hairStyle = l.hairStyle; // bald | short | long | crop | side | curly | bob | ponytail | bun | pigtails
 
   const kid = stage === 'child';
   const teen = stage === 'teen';
@@ -140,15 +152,15 @@ export function appearance(person) {
   return {
     seed: p.id, gender, age, stage, region,
     skin, hair, eye, hairStyle,
-    shirt: pick(kid ? CLOTH_KID : stage === 'elder' ? CLOTH_ELDER : CLOTH_ADULT),
-    pants: pick(kid ? CLOTH_KID : PANTS),
+    shirt: hex(l.shirt) ?? pick(kid ? CLOTH_KID : stage === 'elder' ? CLOTH_ELDER : CLOTH_ADULT),
+    pants: hex(l.pants) ?? pick(kid ? CLOTH_KID : PANTS),
     shoe: F && !kid && chance(0.4) ? pick([0x7a1a2a, 0x1a1218, 0x5a3a2a]) : 0x1a1218,
     skirt: F && !teen && chance(kid ? 0.5 : 0.55),
     beard: !F && (stage === 'adult' || stage === 'elder') && chance(0.35) ? pick(['full', 'moustache', 'goatee']) : null,
     glasses: stage === 'elder' ? chance(0.6) : chance(0.12),
     cane: old && chance(0.6),
-    h,
-    w: (F ? 0.85 : 0.95) + r() * (kid ? 0.1 : 0.3),
+    h: h * (l.height ?? 1),
+    w: ((F ? 0.85 : 0.95) + r() * (kid ? 0.1 : 0.3)) * (l.build ?? 1),
     headS: kid ? 1.35 - (age / 13) * 0.2 : teen ? 1.05 : 1,
     hunch: stage === 'elder' ? (old ? 0.2 : 0.1) : 0,
   };
