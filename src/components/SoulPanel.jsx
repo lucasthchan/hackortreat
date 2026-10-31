@@ -56,7 +56,7 @@ export default function SoulPanel({ person: p, now, onClose, onKill, onDelay, on
       </div>
 
       <dl className="facts">
-        <div><dt>Born</dt><dd>{dateFmt(p.tz, p.birthAt)}</dd></div>
+        <div><dt>Born</dt><dd>{dateFmt('UTC', p.birthAt)}</dd></div>
         <div><dt>Age</dt><dd>{ageAt(p, Math.min(now, p.reapedAt ?? now))}</dd></div>
         <div><dt>Appointed</dt><dd>{dateTimeFmt(p.tz, p.deathAt)}</dd></div>
         <div><dt>Age at death</dt><dd>{((p.deathAt - p.birthAt) / (365.2425 * 86400000)).toFixed(1)}</dd></div>

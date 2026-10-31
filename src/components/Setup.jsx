@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { CITIES } from '../lib/data.js';
-import { AGE_SPREAD, createWorld, SCHEDULE_HORIZON_H } from '../lib/game.js';
+import { CITIES } from '../../server/db.js';
+import { AGE_SPREAD, createWorld, SCHEDULE_HORIZON_H, DATABASE_SIZE } from '../lib/game.js';
 
 const POPULATIONS = [
   { value: 60, label: 'Quiet', hint: '~1 death / hour' },
@@ -66,8 +66,9 @@ export default function Setup({ onStart }) {
           />
           <BellCurve avg={avgAge} />
           <span className="field-hint">
-            Each soul&rsquo;s lifespan is drawn around this average (±{AGE_SPREAD} yrs). Their appointments fall
-            within the next {SCHEDULE_HORIZON_H} hours.
+            People come from a database of {DATABASE_SIZE.toLocaleString()}. Each one&rsquo;s lifespan is drawn
+     around this average (±{AGE_SPREAD} yrs), which sets the year they were born. Their appointments fall
+     within the next {SCHEDULE_HORIZON_H} hours.
           </span>
         </label>
 
@@ -87,6 +88,11 @@ export default function Setup({ onStart }) {
               </button>
             ))}
           </div>
+
+          <span className="field-hint">
+       New people join the schedule from the database as time passes, until all {DATABASE_SIZE.toLocaleString()}{' '}
+            have had their turn.
+          </span>
         </fieldset>
 
         <label className="field">

@@ -1,4 +1,4 @@
-// Cities souls can live in. [name, country, lat, lon, IANA time zone]
+// Cities people in the database live in (used by server/scripts/generate-people.mjs and the setup screen). [name, country, lat, lon, IANA time zone]
 export const CITIES = [
   ['Toronto', 'Canada', 43.65, -79.38, 'America/Toronto'],
   ['Vancouver', 'Canada', 49.28, -123.12, 'America/Vancouver'],
@@ -79,17 +79,3 @@ export const CITIES = [
   ['Auckland', 'New Zealand', -36.85, 174.76, 'Pacific/Auckland'],
   ['Suva', 'Fiji', -18.14, 178.44, 'Pacific/Fiji'],
 ].map(([name, country, lat, lon, tz]) => ({ name, country, lat, lon, tz }));
-
-export const FIRST_NAMES = [
-  'Ada', 'Amir', 'Aiko', 'Bea', 'Bruno', 'Chen', 'Chloé', 'Dmitri', 'Dara', 'Elif', 'Emeka',
-  'Freya', 'Gustavo', 'Hana', 'Ines', 'Ivan', 'Jun', 'Kofi', 'Lena', 'Luca', 'Maya', 'Mateo',
-  'Nadia', 'Noah', 'Olu', 'Priya', 'Quinn', 'Rosa', 'Sven', 'Tariq', 'Uma', 'Vera', 'Wei',
-  'Ximena', 'Yusuf', 'Zara', 'Edgar', 'Morticia', 'Vlad', 'Ichabod', 'Lenore', 'Boris',
-];
-
-export const LAST_NAMES = [
-  'Abara', 'Bergström', 'Castillo', 'Dubois', 'Eriksen', 'Fujita', 'García', 'Haddad', 'Ivanova',
-  'Jansen', 'Kowalski', 'Li', 'Mbeki', 'Nakamura', 'Okafor', 'Petrov', 'Quispe', 'Rossi', 'Silva',
-  'Tanaka', 'Usman', 'Varga', 'Wójcik', 'Xu', 'Yilmaz', 'Zhang', 'Poe', 'Crane', 'Graves',
-  'Blackwood', 'Hollow', 'Ashworth',
-];
