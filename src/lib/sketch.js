@@ -136,10 +136,10 @@ export function sketchToPng(strokes, size = 384) {
  * `base64` is the PNG data WITHOUT the "data:image/png;base64," prefix.
  */
 const SYSTEM_PROMPT =
-  'You are the eyes of the Grim Reaper in a cartoon Halloween game. The player sketches a way of death with a mouse ' +
-  'or finger, so drawings are rough. Match the sketch to ONE tool from the list. Be generous with rough sketches that ' +
-  'clearly aim at a tool, but if the drawing does not resemble any tool (random scribbles, letters, a smiley, a house, ' +
-  'a flower...) answer "unknown". Never force a match.';
+    'You are the eyes of the Grim Reaper in a cartoon Halloween game. The player sketches a way of death with a mouse ' +
+    'or finger, so drawings are rough. Match the sketch to ONE tool from the list. Be generous with rough sketches that ' +
+    'clearly aim at a tool, but if the drawing does not resemble any tool (random scribbles, letters, a smiley, a house, ' +
+    'a flower...) answer "unknown". Never force a match.';
 const toolList = () => TOOL_KEYS.map((k) => `- ${k}: ${TOOL_DEFS[k].name} (looks like: ${TOOL_DEFS[k].hint})`).join('\n');
 const SAW_HINT = 'What the sketch looks like, 2 to 5 words, e.g. "a car with two wheels".';
 
@@ -192,7 +192,7 @@ export const GEMINI_MODEL = 'gemini-3.5-flash-lite';
 export const GEMINI_FALLBACK = 'gemini-3.8-flash';
 const SKETCH_PX = 256; // small image = faster upload and fewer image tokens; a doodle doesn't need more
 export const geminiUrl = (model = GEMINI_MODEL) =>
-  `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
 /** Body for POST geminiUrl(), with header  x-goog-api-key: <key>. */
 export function geminiRequestBody(base64, model = GEMINI_MODEL) {
@@ -233,14 +233,15 @@ export function parseGeminiReply(data) {
 }
 
 /**
- * Ask Claude what the sketch is.
+ * Ask the AI (Claude or Gemini) what the sketch is.
  *   → { tool: 'car_crash', saw: 'a small car', via: 'claude' }   recognised
  *   → { tool: null, saw: 'a smiley face', via: 'claude' }        Claude looked, it's not a tool
  *   → null                                                        Claude can't be reached → use classify()
  *
  * Route 1 (normal): POST /api/recognize on our own server, which holds the API key.
- * Route 2 (dev only): if VITE_ANTHROPIC_API_KEY is set in .env.local, call Anthropic straight from
- *   the browser. `import.meta.env.DEV` is false in `npm run build`, so the key never ships.
+ * Route 2 (dev only): a key in .env.local calls the AI straight from the browser:
+ *   VITE_GEMINI_API_KEY → Gemini, VITE_ANTHROPIC_API_KEY → Claude.
+ *   `import.meta.env.DEV` is false in `npm run build`, so the key never ships.
  */
 export async function readSketchWithClaude(strokes) {
   const image = sketchToPng(strokes, SKETCH_PX);
