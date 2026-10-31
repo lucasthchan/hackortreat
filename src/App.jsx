@@ -76,6 +76,12 @@ export default function App() {
     assignedRef.current = new Set(due.map((p) => p.id)); // first pass only records, no banners
   }, [world, now]);
 
+  // the 5 most urgent souls get pins on the globe (same as the top-right tracker)
+  const topKey = world
+    ? world.people.filter((p) => p.status === 'alive').sort((a, b) => a.deathAt - b.deathAt).slice(0, 5).map((p) => p.id).join(',')
+    : '';
+  const topIds = useMemo(() => (topKey ? topKey.split(',') : []), [topKey]);
+
   const selected = useMemo(() => world?.people.find((p) => p.id === selectedId) ?? null, [world, selectedId]);
   const drawPerson = useMemo(() => world?.people.find((p) => p.id === drawFor) ?? null, [world, drawFor]);
   const fatePerson = useMemo(() => world?.people.find((p) => p.id === fate?.id) ?? null, [world, fate]);
@@ -109,6 +115,7 @@ export default function App() {
       setWorld(next);
       toast(`Granted ${fmtDuration(delayMs)} more life.`, 'info');
     }
+    return delayMs;
   };
   const onReplay = (id) => {
     const p = world.people.find((x) => x.id === id);
@@ -124,7 +131,7 @@ export default function App() {
       <Hud world={world} now={now} onReset={onReset} />
       <main className="main no-side">
         <section className="map-wrap" aria-label="Globe">
-          <Globe world={world} now={now} selectedId={selectedId} onSelect={setSelectedId} paused={!!fate} />
+          <Globe world={world} now={now} selectedId={selectedId} onSelect={setSelectedId} paused={!!fate} markedIds={topIds} hidePins={!!drawFor || !!fate} />
           <MapOverlay person={selected} now={now} onAccept={onKill} onDelay={onDelay} onReplay={onReplay} onClose={() => setSelectedId(null)} />
           <TargetScroll world={world} now={now} onSelect={setSelectedId} />
           <div className="top-right">

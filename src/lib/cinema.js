@@ -2,6 +2,7 @@
 // glides in, and the chosen tool plays out before the soul rises.
 import * as THREE from 'three';
 import { addStars, createTweens, ease } from './geo3d.js';
+import { lookFor } from './appearance.js';
 
 const R = Math;
 const PI = Math.PI;
@@ -15,9 +16,10 @@ const toColor = (hex) => parseInt(String(hex).replace('#', ''), 16);
 /** The person's look from the database, in the shape makePerson expects. */
 export function appearance(person) {
   const l = person.look ?? {};
+  const shared = lookFor(person); // same skin and hair as the map portrait
   return {
-    skin: toColor(l.skin ?? '#d9a27a'),
-    hair: toColor(l.hair ?? '#4a2c17'),
+    skin: toColor(shared.skin),
+    hair: toColor(shared.hair),
     hs: Math.max(0, HAIR_STYLES.indexOf(l.hairStyle ?? 'short')),
     shirt: toColor(l.shirt ?? '#3a5a8a'),
     pants: toColor(l.pants ?? '#2a2a3a'),

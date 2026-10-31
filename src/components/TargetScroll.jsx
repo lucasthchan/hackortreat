@@ -36,8 +36,27 @@ function ScrollIcon() {
   );
 }
 
+const SORTS = [
+  { id: 'time', label: 'Deadline' },
+  { id: 'place', label: 'Place' },
+  { id: 'night', label: 'Night first' },
+];
+
+function sortSouls(list, by, now) {
+  const byTime = (a, b) => a.deathAt - b.deathAt;
+  if (by === 'place') {
+    return [...list].sort((a, b) => a.country.localeCompare(b.country) || a.city.localeCompare(b.city) || byTime(a, b));
+  }
+  if (by === 'night') {
+    const dark = (p) => (isNight(p.lat, p.lon, new Date(now)) ? 0 : 1);
+    return [...list].sort((a, b) => dark(a) - dark(b) || byTime(a, b));
+  }
+  return [...list].sort(byTime);
+}
+
 export default function TargetScroll({ world, now, onSelect }) {
   const [open, setOpen] = useState(false);
+  const [sortBy, setSortBy] = useState('time');
 
   useEffect(() => {
     if (!open) return;
@@ -47,9 +66,11 @@ export default function TargetScroll({ world, now, onSelect }) {
   }, [open]);
 
   const horizon = now + ASSIGNMENT_WINDOW_H * HOUR;
-  const todo = world.people
-    .filter((p) => p.status === 'alive' && p.deathAt <= horizon)
-    .sort((a, b) => a.deathAt - b.deathAt);
+  const todo = sortSouls(
+    world.people.filter((p) => p.status === 'alive' && p.deathAt <= horizon),
+    sortBy,
+    now,
+  );
   const done = world.people
     .filter((p) => p.status === 'reaped')
     .sort((a, b) => b.reapedAt - a.reapedAt)
@@ -63,20 +84,34 @@ export default function TargetScroll({ world, now, onSelect }) {
 
   return (
     <>
-      <button className="scroll-btn" onClick={() => setOpen(true)} aria-label={`Open the to-do list, ${todo.length} targets`}>
+      <button className="scroll-btn" onClick={() => setOpen(true)} aria-label={`Open Death’s errands, ${todo.length} targets`}>
         <span className="scroll-btn-art">
           <ScrollIcon />
           <BoneHand className="hand-mini" />
         </span>
-        <span className="scroll-btn-label">To Do List</span>
+        <span className="scroll-btn-label">Death&rsquo;s Errands</span>
         {dueCount > 0 && <span className="scroll-btn-count">{dueCount}</span>}
       </button>
 
       {open && (
         <div className="scroll-backdrop" onClick={() => setOpen(false)}>
-          <div className="scroll-held" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Reaper's to-do list">
+          <div className="scroll-held" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Death’s errands">
             <div className="scroll-paper">
-              <h2 className="scroll-title">To Do List</h2>
+              <h2 className="scroll-title">Death&rsquo;s Errands</h2>
+              <div className="scroll-sort" role="radiogroup" aria-label="Sort by">
+                <span>Sort by:</span>
+                {SORTS.map((o) => (
+                  <button
+                    key={o.id}
+                    role="radio"
+                    aria-checked={sortBy === o.id}
+                    className={sortBy === o.id ? 'on' : ''}
+                    onClick={() => setSortBy(o.id)}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
               <ul className="scroll-rows">
                 {todo.length === 0 && done.length === 0 && <li className="scroll-empty">Nothing to do… for now.</li>}
                 {todo.map((p) => {
@@ -87,7 +122,7 @@ export default function TargetScroll({ world, now, onSelect }) {
                       <button className={`scroll-row ${until <= 0 ? 'is-due' : ''}`} onClick={() => go(p.id)}>
                         <span className="scroll-box" />
                         <span className="scroll-text">
-                          Reap {p.name} <small>in {p.city}</small>
+                          Reap {p.name} <small>in {p.city}{sortBy === 'place' ? `, ${p.country}` : ''}</small>
                         </span>
                         <span className="scroll-when">
                           {night ? '☾' : '☀'} {until <= 0 ? 'now!' : fmtDuration(until)}

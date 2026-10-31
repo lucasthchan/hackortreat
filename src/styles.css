@@ -429,3 +429,92 @@ select { width: 100%; padding: 9px 10px; background: var(--panel-2); border: 1px
   .top-right { top: auto; bottom: 110px; right: 12px; }
   .next { display: none; }
 }
+
+/* ---------- errands sort switch ---------- */
+.scroll-title { font-size: 36px; }
+.scroll-sort { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin: -4px 0 8px; font-family: 'Patrick Hand SC', cursive; font-size: 18px; color: #5b524a; }
+.scroll-sort button { background: none; border: 0; padding: 0 2px; cursor: pointer; font: inherit; color: #5b524a; border-radius: 40%; }
+.scroll-sort button:hover { color: #1b1714; }
+.scroll-sort button.on { color: #b3141b; box-shadow: 0 0 0 2px #b3141b; transform: rotate(-2deg); padding: 0 8px; }
+.scroll-sort button:focus-visible { outline: 2px dashed #b3141b; outline-offset: 2px; }
+
+/* ---------- leader line: target dot → target card ---------- */
+.leader { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; transition: opacity .25s; overflow: visible; }
+.leader path { fill: none; stroke: #ff5a64; stroke-width: 1.5; stroke-dasharray: 6 5; animation: leaderFlow 1.2s linear infinite; filter: drop-shadow(0 0 4px rgba(255,74,90,.8)); }
+.leader circle { fill: none; stroke: #ff5a64; stroke-width: 1.5; filter: drop-shadow(0 0 4px rgba(255,74,90,.9)); }
+@keyframes leaderFlow { to { stroke-dashoffset: -22; } }
+@media (prefers-reduced-motion: reduce) { .leader path { animation: none; } }
+@media (max-width: 860px) { .leader { display: none; } }
+
+/* ---------- globe pins for the 5 most urgent souls ---------- */
+.gm-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.gm { position: absolute; left: 0; top: 0; width: 0; height: 0; padding: 0; border: 0; background: none; cursor: pointer; transition: opacity .2s; will-change: transform; }
+.gm-float { position: absolute; left: 0; bottom: 10px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; animation: gmBob 2.4s ease-in-out infinite; }
+.gm-pin { position: relative; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: radial-gradient(circle at 35% 30%, #4a1620, #1a080c); border: 1.5px solid #ff4a5a; box-shadow: 0 0 12px rgba(255,74,90,.55), inset 0 0 6px rgba(255,74,90,.4); transition: transform .15s, box-shadow .15s; }
+.gm-pin svg { width: 17px; height: 17px; transform: rotate(45deg); fill: none; stroke: #ffd7d0; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.gm-rank { position: absolute; top: -7px; right: -7px; transform: rotate(45deg); width: 16px; height: 16px; border-radius: 50%; background: #0c0b10; border: 1px solid #ff4a5a; color: #ffd7d0; font: 600 10px/14px var(--font-mono); text-align: center; }
+.gm-name { margin-top: 2px; opacity: 0; transform: translateY(-4px); transition: opacity .15s, transform .15s; font-family: var(--font-display); font-weight: 700; font-size: 12px; color: var(--bone); white-space: nowrap; text-shadow: 0 1px 6px #000, 0 0 2px #000; pointer-events: none; position: absolute; top: 36px; }
+.gm-base { position: absolute; left: -6px; top: -3px; width: 12px; height: 6px; border-radius: 50%; border: 1.5px solid #ff4a5a; animation: gmPing 1.8s ease-out infinite; }
+.gm:hover .gm-pin, .gm:focus-visible .gm-pin { transform: rotate(-45deg) scale(1.15); box-shadow: 0 0 20px rgba(255,74,90,.9), inset 0 0 8px rgba(255,74,90,.6); }
+.gm:hover .gm-name, .gm:focus-visible .gm-name { opacity: 1; transform: none; }
+.gm:focus-visible { outline: none; }
+.gm.is-over .gm-pin { animation: gmAlarm 1s ease-in-out infinite; }
+.gm.is-day .gm-pin { border-color: #8a7f96; box-shadow: none; filter: saturate(.4) brightness(.85); }
+.gm.is-day .gm-base { border-color: #8a7f96; }
+.gm.is-on .gm-pin { border-color: #d9b36a; box-shadow: 0 0 16px rgba(217,179,106,.7); }
+.gm.is-on .gm-rank { border-color: #d9b36a; color: #d9b36a; }
+
+/* click burst */
+.gm-sparks { position: absolute; left: 0; top: -26px; width: 0; height: 0; }
+.gm-sparks i { position: absolute; left: -2px; top: -2px; width: 4px; height: 4px; border-radius: 50%; background: #ffb48a; box-shadow: 0 0 6px #ff4a5a; opacity: 0; }
+.gm.is-burst .gm-sparks i { animation: gmSpark .7s cubic-bezier(.2,.7,.3,1) forwards; }
+.gm.is-burst .gm-pin { animation: gmPop .45s cubic-bezier(.3,1.6,.5,1); }
+.globe-flash { position: absolute; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, transparent 45%, rgba(210,40,60,.45) 100%); }
+.globe-flash.on { animation: gmFlash .7s ease-out; }
+
+@keyframes gmBob { 50% { transform: translateX(-50%) translateY(-4px); } }
+@keyframes gmPing { from { transform: scale(.6); opacity: 1; } to { transform: scale(2.6); opacity: 0; } }
+@keyframes gmAlarm { 50% { box-shadow: 0 0 22px rgba(255,74,90,1), inset 0 0 10px rgba(255,74,90,.7); } }
+@keyframes gmPop { 0% { transform: rotate(-45deg) scale(1); } 40% { transform: rotate(-45deg) scale(1.6); } 100% { transform: rotate(-45deg) scale(1); } }
+@keyframes gmSpark { 0% { opacity: 1; transform: rotate(var(--a)) translateY(0); } 100% { opacity: 0; transform: rotate(var(--a)) translateY(-46px) scale(.4); } }
+@keyframes gmFlash { 0% { opacity: 0; } 20% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .gm-float, .gm-base { animation: none; } }
+
+/* ---------- pins never sit above dialogs ---------- */
+.gm-layer { isolation: isolate; z-index: 0; transition: opacity .2s; }
+.gm-layer.is-hidden { opacity: 0; pointer-events: none !important; }
+.gm-layer.is-hidden .gm { pointer-events: none !important; }
+
+/* ---------- accept / delay effects ---------- */
+.ov-act { position: relative; --fx: 217,179,106; }
+.ov-act-teal { --fx: 111,194,192; }
+.ov-act.is-disabled { cursor: not-allowed; opacity: .45; }
+.ov-act.is-disabled .ov-act-ring { box-shadow: 0 0 0 4px rgba(20,14,18,.85), 0 8px 20px rgba(0,0,0,.6) !important; transform: none !important; }
+.ov-act-ring { position: relative; }
+/* dashed halo that spins on hover */
+.ov-act-ring::after { content: ''; position: absolute; inset: -8px; border-radius: 50%; border: 1.5px dashed rgba(var(--fx), .7); opacity: 0; transform: scale(.85); transition: opacity .2s, transform .2s; }
+.ov-act:not(.is-disabled):hover .ov-act-ring::after, .ov-act:not(.is-disabled):focus-visible .ov-act-ring::after { opacity: 1; transform: scale(1); animation: actSpin 6s linear infinite; }
+.ov-act:not(.is-disabled):hover .ov-act-ring { box-shadow: 0 0 0 4px rgba(20,14,18,.85), 0 0 24px rgba(var(--fx), .5); }
+.ov-act-ring svg { position: relative; z-index: 1; transition: transform .5s cubic-bezier(.5,1.6,.4,1), filter .2s; }
+.ov-act-wave { position: absolute; inset: -2px; border-radius: 50%; border: 2px solid rgb(var(--fx)); opacity: 0; pointer-events: none; }
+
+/* clicked */
+.ov-act.fx-go .ov-act-ring { animation: actPop .45s cubic-bezier(.3,1.7,.5,1); }
+.ov-act.fx-go .ov-act-ring svg { filter: drop-shadow(0 0 8px rgb(var(--fx))); }
+.ov-act.fx-go .ov-act-wave { animation: actWave .75s ease-out forwards; }
+.ov-act.fx-go .ov-act-wave.w2 { animation-delay: .14s; }
+.ov-act-teal.fx-go .ov-act-ring svg { transform: rotate(180deg); }        /* hourglass flips */
+.ov-act-gold.fx-go .ov-act-ring { background: radial-gradient(circle at 50% 40%, #6a4e2a, #1d1519); }
+
+/* blocked (e.g. daytime) */
+.ov-act.fx-no { animation: actShake .4s ease-in-out; }
+
+/* floating "+3h 10m" */
+.ov-act-float { position: absolute; left: 50%; top: -6px; transform: translateX(-50%); color: rgb(var(--fx)); font-size: 15px; font-weight: 600; white-space: nowrap; text-shadow: 0 0 10px rgba(var(--fx), .8), 0 2px 6px #000; pointer-events: none; animation: actFloat 1.4s ease-out forwards; }
+
+@keyframes actSpin { to { transform: rotate(360deg); } }
+@keyframes actPop { 40% { transform: scale(1.18); } 100% { transform: scale(1); } }
+@keyframes actWave { 0% { opacity: .9; transform: scale(1); } 100% { opacity: 0; transform: scale(2.3); } }
+@keyframes actShake { 20%, 60% { transform: translateX(-5px); } 40%, 80% { transform: translateX(5px); } }
+@keyframes actFloat { 0% { opacity: 0; transform: translate(-50%, 6px); } 15% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -38px); } }
+@media (prefers-reduced-motion: reduce) { .ov-act-ring::after { animation: none !important; } .ov-act.fx-go .ov-act-ring, .ov-act.fx-no { animation: none; } }
