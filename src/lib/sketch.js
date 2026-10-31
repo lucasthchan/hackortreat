@@ -186,12 +186,16 @@ export function parseClaudeReply(data) {
 }
 
 /* ----- Gemini (Google) version of the same request ----- */
-export const GEMINI_MODEL = 'gemini-3.8-flash';
+// Flash-Lite is Google's fastest Gemini model and thinks only minimally by default, which suits a quick
+// "which of these doodles is it?" question. If it isn't available for your key, we retry once on 3.8 Flash.
+export const GEMINI_MODEL = 'gemini-3.5-flash-lite';
+export const GEMINI_FALLBACK = 'gemini-3.8-flash';
+const SKETCH_PX = 256; // small image = faster upload and fewer image tokens; a doodle doesn't need more
 export const geminiUrl = (model = GEMINI_MODEL) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
 /** Body for POST geminiUrl(), with header  x-goog-api-key: <key>. */
-export function geminiRequestBody(base64) {
+export function geminiRequestBody(base64, model = GEMINI_MODEL) {
   return {
     systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
     contents: [
@@ -204,7 +208,9 @@ export function geminiRequestBody(base64) {
       },
     ],
     generationConfig: {
-      temperature: 0,
+      // keep thinking as short as the model allows (3.8 Flash doesn't accept "minimal")
+      thinkingConfig: { thinkingLevel: model.includes('lite') ? 'minimal' : 'low' },
+      maxOutputTokens: 120,
       responseMimeType: 'application/json',
       responseSchema: {
         type: 'OBJECT',
@@ -237,10 +243,12 @@ export function parseGeminiReply(data) {
  *   the browser. `import.meta.env.DEV` is false in `npm run build`, so the key never ships.
  */
 export async function readSketchWithClaude(strokes) {
-  const image = sketchToPng(strokes);
+  const image = sketchToPng(strokes, SKETCH_PX);
   const base64 = image.split(',')[1];
+  const devGemini = import.meta.env.DEV && import.meta.env.VITE_GEMINI_API_KEY;
 
-  try {
+  // in dev with a Gemini key there's no game server to ask, so go straight to Gemini
+  if (!devGemini) try {
     const res = await fetch('/api/recognize', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -254,18 +262,29 @@ export async function readSketchWithClaude(strokes) {
     /* no server running: try the dev route */
   }
 
-  if (import.meta.env.DEV && import.meta.env.VITE_GEMINI_API_KEY) {
-    try {
-      const res = await fetch(geminiUrl(), {
+  if (devGemini) {
+    const ask = (model) =>
+      fetch(geminiUrl(model), {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-goog-api-key': import.meta.env.VITE_GEMINI_API_KEY },
-        body: JSON.stringify(geminiRequestBody(base64)),
+        body: JSON.stringify(geminiRequestBody(base64, model)),
       });
+    try {
+      const t0 = performance.now();
+      let model = GEMINI_MODEL;
+      let res = await ask(model);
+      if (res.status === 400 || res.status === 404) {
+        console.warn(`[sketch] ${model} unavailable (${res.status}), retrying on ${GEMINI_FALLBACK}`, await res.text());
+        model = GEMINI_FALLBACK;
+        res = await ask(model);
+      }
       if (!res.ok) {
         console.warn('[sketch] Gemini API error', res.status, await res.text());
         return null;
       }
-      return { ...parseGeminiReply(await res.json()), via: 'gemini' };
+      const out = { ...parseGeminiReply(await res.json()), via: 'gemini' };
+      console.info(`[sketch] ${model} answered in ${Math.round(performance.now() - t0)} ms:`, out);
+      return out;
     } catch (e) {
       console.warn('[sketch] Gemini API unreachable', e);
       return null;
