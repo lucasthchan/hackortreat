@@ -237,7 +237,22 @@ export function parseGeminiReply(data) {
  *   VITE_GEMINI_API_KEY → Gemini, VITE_ANTHROPIC_API_KEY → Claude.
  *   `import.meta.env.DEV` is false in `npm run build`, so the key never ships.
  */
+let aiProblem = '';
+/** Why the last AI reading failed (shown in the dialog), or '' if it worked. */
+export const getAiProblem = () => aiProblem;
+
+/** Pull a readable message out of an API error reply. */
+async function errorText(res) {
+  const raw = await res.text();
+  try {
+    return JSON.parse(raw)?.error?.message || raw;
+  } catch {
+    return raw;
+  }
+}
+
 export async function readSketchWithClaude(strokes) {
+  aiProblem = '';
   const image = sketchToPng(strokes);
   const base64 = image.split(',')[1];
 
@@ -263,12 +278,15 @@ export async function readSketchWithClaude(strokes) {
         body: JSON.stringify(geminiRequestBody(base64)),
       });
       if (!res.ok) {
-        console.warn('[sketch] Gemini API error', res.status, await res.text());
+        const msg = await errorText(res);
+        aiProblem = `Gemini error ${res.status}: ${msg.slice(0, 160)}`;
+        console.warn('[sketch]', aiProblem);
         return null;
       }
       return { ...parseGeminiReply(await res.json()), via: 'gemini' };
     } catch (e) {
-      console.warn('[sketch] Gemini API unreachable', e);
+      aiProblem = `Couldn’t reach Gemini (${e.message}).`;
+      console.warn('[sketch]', aiProblem, e);
       return null;
     }
   }
@@ -286,13 +304,20 @@ export async function readSketchWithClaude(strokes) {
         body: JSON.stringify(claudeRequestBody(base64)),
       });
       if (!res.ok) {
-        console.warn('[sketch] Claude API error', res.status, await res.text());
+        const msg = await errorText(res);
+        aiProblem = `Claude error ${res.status}: ${msg.slice(0, 160)}`;
+        console.warn('[sketch]', aiProblem);
         return null;
       }
       return { ...parseClaudeReply(await res.json()), via: 'claude' };
     } catch (e) {
-      console.warn('[sketch] Claude API unreachable', e);
+      aiProblem = `Couldn’t reach Claude (${e.message}).`;
+      console.warn('[sketch]', aiProblem, e);
     }
+    return null;
   }
+  aiProblem = import.meta.env.DEV
+      ? 'No AI key loaded: put VITE_GEMINI_API_KEY=… in .env.local next to package.json, then restart npm run dev.'
+      : 'The recognition server isn’t reachable.';
   return null;
 }

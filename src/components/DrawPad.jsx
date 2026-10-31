@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { classify, readSketchWithClaude, TOOL_DEFS, TOOL_KEYS } from '../lib/sketch.js';
+import { classify, getAiProblem, readSketchWithClaude, TOOL_DEFS, TOOL_KEYS } from '../lib/sketch.js';
 
 const SIZE = 340;
 
@@ -152,7 +152,7 @@ export default function DrawPad({ person, canStillReap, unlocked, balance, onBuy
       // offline: only a line, a zigzag or a spiral can be read
       tool = classify(strokes.current);
       if (!tool) {
-        setError('Unrecognizable. Offline, the Reaper can only read a straight line, a zigzag or a spiral. Pick a tool below.');
+        setError(`Unrecognizable. Offline, the Reaper can only read a straight line, a zigzag or a spiral. Pick a tool below.${getAiProblem() ? ` (${getAiProblem()})` : ''}`);
         return;
       }
     }
@@ -176,87 +176,87 @@ export default function DrawPad({ person, canStillReap, unlocked, balance, onBuy
   const offerDef = offer ? TOOL_DEFS[offer] : null;
 
   return (
-    <div className="modal" onPointerDown={(e) => e.target === e.currentTarget && onCancel()}>
-      <div className="card draw-card" role="dialog" aria-modal="true" aria-labelledby="pad-title">
-        <h2 id="pad-title">Draw the fate of {person.name}</h2>
-        <p className="card-note">
-          Sketch a way of death: a car, a wave, a ghost, a bomb… Drawn fates earn a bonus. Or pick one below.
-        </p>
-        <canvas
-          ref={canvasRef}
-          className={`pad ${busy ? 'pad-busy' : ''}`}
-          width={SIZE}
-          height={SIZE}
-          aria-label="Drawing pad"
-          onPointerDown={down}
-          onPointerMove={move}
-          onPointerUp={up}
-          onPointerCancel={up}
-        />
-        <p className={`pad-err ${info && !error ? (ok ? 'pad-ok' : 'pad-info') : ''}`} role="alert">{error || info}</p>
+      <div className="modal" onPointerDown={(e) => e.target === e.currentTarget && onCancel()}>
+        <div className="card draw-card" role="dialog" aria-modal="true" aria-labelledby="pad-title">
+          <h2 id="pad-title">Draw the fate of {person.name}</h2>
+          <p className="card-note">
+            Sketch a way of death: a car, a wave, a ghost, a bomb… Drawn fates earn a bonus. Or pick one below.
+          </p>
+          <canvas
+              ref={canvasRef}
+              className={`pad ${busy ? 'pad-busy' : ''}`}
+              width={SIZE}
+              height={SIZE}
+              aria-label="Drawing pad"
+              onPointerDown={down}
+              onPointerMove={move}
+              onPointerUp={up}
+              onPointerCancel={up}
+          />
+          <p className={`pad-err ${info && !error ? (ok ? 'pad-ok' : 'pad-info') : ''}`} role="alert">{error || info}</p>
 
-        <div className="shelf-head">
-          <span>Your tools</span>
-          <span className="pad-balance">To spend: <strong className="mono">{balance}</strong></span>
-        </div>
-        <div className="shelf">
-          {owned.map((k) => (
-            <button
-              key={k}
-              type="button"
-              className={`chip ${forced === k ? 'on' : ''}`}
-              aria-pressed={forced === k}
-              onClick={() => pickChip(k)}
-            >
-              <span aria-hidden="true">{TOOL_DEFS[k].icon}</span> {TOOL_DEFS[k].name}
-            </button>
-          ))}
-        </div>
+          <div className="shelf-head">
+            <span>Your tools</span>
+            <span className="pad-balance">To spend: <strong className="mono">{balance}</strong></span>
+          </div>
+          <div className="shelf">
+            {owned.map((k) => (
+                <button
+                    key={k}
+                    type="button"
+                    className={`chip ${forced === k ? 'on' : ''}`}
+                    aria-pressed={forced === k}
+                    onClick={() => pickChip(k)}
+                >
+                  <span aria-hidden="true">{TOOL_DEFS[k].icon}</span> {TOOL_DEFS[k].name}
+                </button>
+            ))}
+          </div>
 
-        {locked.length > 0 && (
-          <>
-            <button type="button" className="shelf-toggle" aria-expanded={shopOpen} onClick={() => setShopOpen((o) => !o)}>
-              {shopOpen ? '▾' : '▸'} Locked fates ({locked.length})
-            </button>
-            {shopOpen && (
-              <div className="shelf shelf-locked">
-                {locked.map((k) => {
-                  const d = TOOL_DEFS[k];
-                  const afford = balance >= d.cost;
-                  return (
-                    <button
-                      key={k}
-                      type="button"
-                      className={`chip locked ${offer === k ? 'offer' : ''} ${afford ? 'afford' : ''}`}
-                      onClick={() => pickChip(k)}
-                    >
-                      <span aria-hidden="true">{d.icon}</span> {d.name} <span className="chip-cost mono">{d.cost}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </>
-        )}
+          {locked.length > 0 && (
+              <>
+                <button type="button" className="shelf-toggle" aria-expanded={shopOpen} onClick={() => setShopOpen((o) => !o)}>
+                  {shopOpen ? '▾' : '▸'} Locked fates ({locked.length})
+                </button>
+                {shopOpen && (
+                    <div className="shelf shelf-locked">
+                      {locked.map((k) => {
+                        const d = TOOL_DEFS[k];
+                        const afford = balance >= d.cost;
+                        return (
+                            <button
+                                key={k}
+                                type="button"
+                                className={`chip locked ${offer === k ? 'offer' : ''} ${afford ? 'afford' : ''}`}
+                                onClick={() => pickChip(k)}
+                            >
+                              <span aria-hidden="true">{d.icon}</span> {d.name} <span className="chip-cost mono">{d.cost}</span>
+                            </button>
+                        );
+                      })}
+                    </div>
+                )}
+              </>
+          )}
 
-        {offerDef && (
-          <div className="shop-line">
+          {offerDef && (
+              <div className="shop-line">
             <span>
               Unlock <strong>{offerDef.icon} {offerDef.name}</strong> for {offerDef.cost}?
             </span>
-            <button className="btn btn-sm" onClick={buy} disabled={balance < offerDef.cost}>
-              {balance < offerDef.cost ? `Need ${offerDef.cost - balance} more` : 'Unlock'}
-            </button>
-          </div>
-        )}
+                <button className="btn btn-sm" onClick={buy} disabled={balance < offerDef.cost}>
+                  {balance < offerDef.cost ? `Need ${offerDef.cost - balance} more` : 'Unlock'}
+                </button>
+              </div>
+          )}
 
-        <div className="card-actions">
-          <button className="btn btn-ghost" disabled={busy} onClick={() => { strokes.current.pop(); redraw(); }}>Undo</button>
-          <button className="btn btn-ghost" disabled={busy} onClick={() => { strokes.current = []; setError(''); redraw(); }}>Clear</button>
-          <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-kill" onClick={unleash} disabled={busy}>{busy ? (ok ? 'Unleashing…' : 'Reading…') : 'Unleash'}</button>
+          <div className="card-actions">
+            <button className="btn btn-ghost" disabled={busy} onClick={() => { strokes.current.pop(); redraw(); }}>Undo</button>
+            <button className="btn btn-ghost" disabled={busy} onClick={() => { strokes.current = []; setError(''); redraw(); }}>Clear</button>
+            <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
+            <button className="btn btn-kill" onClick={unleash} disabled={busy}>{busy ? (ok ? 'Unleashing…' : 'Reading…') : 'Unleash'}</button>
+          </div>
         </div>
       </div>
-    </div>
   );
 }

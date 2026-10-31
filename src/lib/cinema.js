@@ -10,7 +10,6 @@ const PI = Math.PI;
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const rnd = (a, b) => a + R.random() * (b - a);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const YEAR_MS = 365.2425 * 86400000;
 
 // In cinema.js, select from the line  <<<<<<< char_2  (line 14)
 // down to and including the line  >>>>>>> main  (line 172),
@@ -18,78 +17,22 @@ const YEAR_MS = 365.2425 * 86400000;
 // The line right after should be a lone  }  (that closes the function).
 
 /* =====================================================================
- * Looks: gender, region, age → a person's appearance
+ * Looks. Skin tone, hair colour, gender, glasses and facial hair come from lookFor() in
+ * appearance.js (region of their city + age), the same source as the map portrait, so a soul
+ * looks the same in both. This file only adds the 3D extras: body shape by age, eyes, clothes.
  * ===================================================================== */
-
-// Skin tones, light to deep
-const TONE = {
-  porcelain: 0xf7dfd0, fair: 0xf1cdb3, light: 0xe9bf9c, warm: 0xebc8a2, beige: 0xdcae86, golden: 0xd9a777,
-  olive: 0xc79566, tan: 0xb27b50, caramel: 0x9a6640, brown: 0x80502f, dark: 0x633b22, deep: 0x4a2b19,
-};
-const T_ = TONE;
-const REGION_SKIN = {
-  europe: [T_.porcelain, T_.fair, T_.fair, T_.light, T_.beige],
-  mena: [T_.light, T_.beige, T_.golden, T_.olive, T_.tan],
-  africa: [T_.caramel, T_.brown, T_.brown, T_.dark, T_.dark, T_.deep],
-  south_asia: [T_.golden, T_.olive, T_.tan, T_.caramel, T_.brown],
-  east_asia: [T_.fair, T_.warm, T_.warm, T_.beige, T_.golden],
-  se_asia: [T_.beige, T_.golden, T_.olive, T_.tan, T_.caramel],
-  latam: [T_.light, T_.beige, T_.golden, T_.olive, T_.tan, T_.caramel, T_.brown],
-  pacific: [T_.tan, T_.caramel, T_.brown, T_.dark],
-  mixed: Object.values(TONE),
-};
-
-const HAIR_C = { black: 0x15100e, dbrown: 0x3b2416, brown: 0x6b4426, auburn: 0x7a3218, blond: 0xc9a25a, ash: 0xa48a62 };
-const REGION_HAIR = {
-  europe: ['black', 'dbrown', 'dbrown', 'brown', 'brown', 'blond', 'ash', 'auburn'],
-  mixed: ['black', 'black', 'dbrown', 'dbrown', 'brown', 'blond', 'auburn'],
-  latam: ['black', 'black', 'dbrown', 'dbrown', 'brown'],
-  default: ['black', 'black', 'black', 'dbrown'],
-};
 const EYE_C = { dark: 0x2a1a10, brown: 0x5a3418, hazel: 0x7a6a30, green: 0x3f7a4a, blue: 0x3f6aa8, grey: 0x7a8aa0 };
 const REGION_EYES = {
-  europe: ['brown', 'brown', 'hazel', 'green', 'blue', 'blue', 'grey'],
+  northEurope: ['brown', 'hazel', 'green', 'blue', 'blue', 'grey'],
+  southEurope: ['dark', 'brown', 'brown', 'hazel', 'green'],
   mixed: ['dark', 'brown', 'brown', 'hazel', 'green', 'blue'],
+  latam: ['dark', 'brown', 'brown', 'hazel'],
   default: ['dark', 'dark', 'brown'],
 };
-
-const CLOTH_ADULT = [0x3a5a8a, 0x7a2a4a, 0x2f6a4a, 0xb06a2a, 0x5a4a8a, 0x8a8a3a, 0x2a2a3a, 0xa04040, 0x2a6a7a, 0x6a3a2a];
-const CLOTH_KID = [0xe05a5a, 0x4aa0e0, 0xf2c14e, 0x5ac08a, 0xc070e0, 0xff8a3a];
-const CLOTH_ELDER = [0x6a5a4a, 0x4a5a6a, 0x7a6a7a, 0x5a6a4a, 0x8a7a6a, 0x5a3a3a];
 const PANTS = [0x22242e, 0x2c3550, 0x3a3226, 0x4a4a52, 0x1a1a20, 0x5a4a3a];
-
-const COUNTRY_REGION = {
-  Canada: 'mixed', USA: 'mixed', Australia: 'mixed', 'New Zealand': 'mixed', 'South Africa': 'africa',
-  Mexico: 'latam', Cuba: 'latam', Colombia: 'latam', Peru: 'latam', Chile: 'latam', Argentina: 'latam', Brazil: 'latam',
-  Iceland: 'europe', Ireland: 'europe', UK: 'europe', France: 'europe', Spain: 'europe', Portugal: 'europe', Italy: 'europe',
-  Germany: 'europe', Netherlands: 'europe', Sweden: 'europe', Norway: 'europe', Czechia: 'europe', Poland: 'europe',
-  Romania: 'europe', Greece: 'europe', Russia: 'europe',
-  Turkey: 'mena', Egypt: 'mena', Morocco: 'mena', 'Saudi Arabia': 'mena', UAE: 'mena', Iran: 'mena',
-  Nigeria: 'africa', Ghana: 'africa', Kenya: 'africa', Ethiopia: 'africa', 'DR Congo': 'africa', Madagascar: 'pacific',
-  Pakistan: 'south_asia', India: 'south_asia', Bangladesh: 'south_asia', Nepal: 'south_asia',
-  Thailand: 'se_asia', Vietnam: 'se_asia', Singapore: 'se_asia', Indonesia: 'se_asia', Philippines: 'se_asia',
-  China: 'east_asia', Mongolia: 'east_asia', 'South Korea': 'east_asia', Japan: 'east_asia', Fiji: 'pacific',
-};
-
-/** Region from the country, or from coordinates if the backend adds a country we don't know. */
-function regionOf(p) {
-  if (COUNTRY_REGION[p.country]) return COUNTRY_REGION[p.country];
-  const lat = p.lat ?? 0;
-  const lon = p.lon ?? 0;
-  if (lon < -30) return lat > 24 ? 'mixed' : 'latam';
-  if (lon < 60 && lat > 36) return 'europe';
-  if (lon < 62 && lat > 12) return 'mena';
-  if (lon < 55) return 'africa';
-  if (lon < 92 && lat > 5 && lat < 37) return 'south_asia';
-  if (lat > 20 && lon < 150) return 'east_asia';
-  if (lat > -11 && lon < 141) return 'se_asia';
-  if (lon > 110 && lat < -10) return 'mixed';
-  return 'pacific';
-}
-
-// Used only when the person has no `gender` field (ask the backend to add one).
-const FEMALE = new Set(['ada', 'aiko', 'bea', 'chloé', 'chloe', 'elif', 'freya', 'hana', 'ines', 'lena', 'maya', 'nadia', 'priya', 'rosa', 'uma', 'vera', 'ximena', 'zara', 'morticia', 'lenore', 'dara']);
-const MALE = new Set(['amir', 'bruno', 'dmitri', 'emeka', 'gustavo', 'ivan', 'kofi', 'luca', 'mateo', 'noah', 'olu', 'sven', 'tariq', 'yusuf', 'edgar', 'vlad', 'ichabod', 'boris']);
+// lookFor's 2D hair style → the 3D styles below
+const STYLE_3D = { bald: 'bald', buzz: 'crop', short: 'short', side: 'side', swept: 'side', curly: 'curly', long: 'long', bun: 'bun' };
+const FACIAL_3D = { beard: 'full', mustache: 'moustache', stubble: 'goatee' };
 
 function seeded(seed) {
   let a = 0;
@@ -101,66 +44,46 @@ function seeded(seed) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
+const hex = (v) => (v == null ? null : typeof v === 'number' ? v : parseInt(String(v).replace('#', ''), 16));
 
-/** Stable looks for a person (same person → same look, so replays match). Accepts a person or an id. */
+/** Stable looks for a person (same person → same look, so replays match). */
 export function appearance(person) {
-  const p = typeof person === 'object' && person ? person : { id: person };
-  const r = seeded(p.id);
+  const p = person ?? {};
+  const L = lookFor(p); // skin + hair from their city's region, greyed by age; gender; glasses; facial hair
+  const db = p.look ?? {};
+  const r = seeded(`${p.id}-3d`);
   const pick = (arr) => arr[Math.floor(r() * arr.length)];
   const chance = (x) => r() < x;
-  // The backend may save a look per person ({ skin, hair, hairStyle, shirt, pants, height, build, gender }).
-  // Anything it saved wins; anything missing is worked out here from gender, age and region.
-  const l = p.look ?? {};
-  const hex = (v) => (v == null ? null : typeof v === 'number' ? v : parseInt(String(v).replace('#', ''), 16));
 
-  const first = String(p.name || '').split(' ')[0].toLowerCase();
-  const g0 = l.gender ?? p.gender;
-  const gender = g0 === 'female' || g0 === 'male'
-    ? g0
-    : FEMALE.has(first) ? 'female' : MALE.has(first) ? 'male' : chance(0.5) ? 'female' : 'male';
-  const F = gender === 'female';
-
-  const age = p.birthAt && p.deathAt ? (p.deathAt - p.birthAt) / YEAR_MS : 40;
+  const F = L.gender === 'f' || L.gender === 'female';
+  const age = L.age;
   const stage = age < 13 ? 'child' : age < 20 ? 'teen' : age < 60 ? 'adult' : 'elder';
-  const old = age >= 78;
-
-  const region = regionOf(p);
-  const skin = hex(l.skin) ?? pick(chance(0.1) ? REGION_SKIN.mixed : REGION_SKIN[region]);
-  let hair = hex(l.hair) ?? HAIR_C[pick(REGION_HAIR[region] || REGION_HAIR.default)];
-  if (stage === 'elder') hair = old ? 0xe2e2e4 : chance(0.5) ? 0x9a9a9e : 0xbdbdc0;
-  else if (stage === 'adult' && age > 48 && chance(0.4)) hair = 0x8a8a8e;
-  const eye = EYE_C[pick(REGION_EYES[region] || REGION_EYES.default)];
-  const curlyLikely = region === 'africa' || region === 'pacific';
-
-  let hairStyle;
-  if (F) {
-    hairStyle = stage === 'child' ? pick(['pigtails', 'ponytail', 'bob', 'long'])
-      : stage === 'elder' ? pick(['bun', 'bob', 'short', 'curly'])
-      : pick(['long', 'long', 'ponytail', 'bun', 'bob', curlyLikely ? 'curly' : 'long']);
-    if (curlyLikely && chance(0.4)) hairStyle = 'curly';
-  } else {
-    hairStyle = stage === 'elder' ? pick(['bald', 'bald', 'short', 'crop'])
-      : stage === 'adult' && age > 40 && chance(0.25) ? 'bald'
-      : pick(['short', 'short', 'crop', 'side', curlyLikely ? 'curly' : 'short']);
-    if (curlyLikely && hairStyle !== 'bald' && chance(0.4)) hairStyle = 'curly';
-  }
-  if (l.hairStyle) hairStyle = l.hairStyle; // bald | short | long | crop | side | curly | bob | ponytail | bun | pigtails
-
   const kid = stage === 'child';
   const teen = stage === 'teen';
+  const old = age >= 78;
+
+  let hairStyle = STYLE_3D[L.style] || 'short';
+  if (hairStyle === 'long' && F && kid) hairStyle = pick(['pigtails', 'ponytail', 'long']);
+  else if (hairStyle === 'long' && F && chance(0.3)) hairStyle = pick(['ponytail', 'bob']);
+
   const h = kid ? 0.55 + (age / 13) * 0.2 : teen ? 0.88 + r() * 0.08 : (F ? 0.92 : 0.98) + r() * 0.1 - (old ? 0.04 : 0);
   return {
-    seed: p.id, gender, age, stage, region,
-    skin, hair, eye, hairStyle,
-    shirt: hex(l.shirt) ?? pick(kid ? CLOTH_KID : stage === 'elder' ? CLOTH_ELDER : CLOTH_ADULT),
-    pants: hex(l.pants) ?? pick(kid ? CLOTH_KID : PANTS),
+    seed: p.id,
+    gender: F ? 'female' : 'male',
+    age, stage, region: L.region,
+    skin: hex(L.skin),
+    hair: hex(L.hair),
+    eye: EYE_C[pick(REGION_EYES[L.region] || REGION_EYES.default)],
+    hairStyle,
+    shirt: hex(L.shirt),
+    pants: hex(db.pants) ?? pick(PANTS),
     shoe: F && !kid && chance(0.4) ? pick([0x7a1a2a, 0x1a1218, 0x5a3a2a]) : 0x1a1218,
     skirt: F && !teen && chance(kid ? 0.5 : 0.55),
-    beard: !F && (stage === 'adult' || stage === 'elder') && chance(0.35) ? pick(['full', 'moustache', 'goatee']) : null,
-    glasses: stage === 'elder' ? chance(0.6) : chance(0.12),
+    beard: FACIAL_3D[L.facial] ?? null,
+    glasses: !!L.glasses,
     cane: old && chance(0.6),
-    h: h * (l.height ?? 1),
-    w: ((F ? 0.85 : 0.95) + r() * (kid ? 0.1 : 0.3)) * (l.build ?? 1),
+    h: h * (db.height ?? 1),
+    w: ((F ? 0.85 : 0.95) + r() * (kid ? 0.1 : 0.3)) * (L.build ?? 1),
     headS: kid ? 1.35 - (age / 13) * 0.2 : teen ? 1.05 : 1,
     hunch: stage === 'elder' ? (old ? 0.2 : 0.1) : 0,
   };
@@ -222,8 +145,8 @@ export function createCinema(canvas, flashEl) {
   moon.position.set(-7, 7.5, -17);
   cscene.add(moon);
   const halo = new THREE.Mesh(
-    new THREE.SphereGeometry(2.8, 20, 14),
-    new THREE.MeshBasicMaterial({ color: 0x8a9aff, transparent: true, opacity: 0.14, fog: false, depthWrite: false, blending: THREE.AdditiveBlending }),
+      new THREE.SphereGeometry(2.8, 20, 14),
+      new THREE.MeshBasicMaterial({ color: 0x8a9aff, transparent: true, opacity: 0.14, fog: false, depthWrite: false, blending: THREE.AdditiveBlending }),
   );
   halo.position.copy(moon.position);
   cscene.add(halo);
@@ -257,8 +180,8 @@ export function createCinema(canvas, flashEl) {
     const life = new Float32Array(n);
     ge.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     const m = new THREE.Points(
-      ge,
-      new THREE.PointsMaterial({ color: col, size, transparent: true, opacity: op || 0.9, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }),
+        ge,
+        new THREE.PointsMaterial({ color: col, size, transparent: true, opacity: op || 0.9, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }),
     );
     m.frustumCulled = false;
     cscene.add(m);
@@ -345,7 +268,7 @@ export function createCinema(canvas, flashEl) {
     return m;
   }
   const glowMat = (c, o = 0.4) =>
-    new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: o, blending: THREE.AdditiveBlending, depthWrite: false });
+      new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: o, blending: THREE.AdditiveBlending, depthWrite: false });
   const mesh = (geo, mat, x = 0, y = 0, z = 0) => {
     const m = new THREE.Mesh(geo, mat);
     m.position.set(x, y, z);
@@ -372,7 +295,7 @@ export function createCinema(canvas, flashEl) {
     // phi = PI/2 faces forward in SphereGeometry, so a gap around it keeps the face clear
     const cap = (t0 = 0, t1 = 0.42) => mesh(new THREE.SphereGeometry(r * 1.06, 22, 12, 0, PI * 2, PI * t0, PI * t1), hm);
     const band = (t0, t1, open = 1.0) =>
-      mesh(new THREE.SphereGeometry(r * 1.06, 22, 8, PI / 2 + open, PI * 2 - open * 2, PI * t0, PI * (t1 - t0)), hm);
+        mesh(new THREE.SphereGeometry(r * 1.06, 22, 8, PI / 2 + open, PI * 2 - open * 2, PI * t0, PI * (t1 - t0)), hm);
     const s = a.hairStyle;
     if (s === 'bald') {
       head.add(band(0.42, 0.6, 1.2)); // horseshoe of hair round the back
@@ -408,8 +331,8 @@ export function createCinema(canvas, flashEl) {
     head.add(fringe);
     if (s === 'long') {
       const curtain = mesh(
-        new THREE.CylinderGeometry(r * 1.0, r * 1.25, r * 2.6, 18, 1, true, PI * 0.25, PI * 1.5),
-        hm, 0, -r * 1.2, -r * 0.05,
+          new THREE.CylinderGeometry(r * 1.0, r * 1.25, r * 2.6, 18, 1, true, PI * 0.25, PI * 1.5),
+          hm, 0, -r * 1.2, -r * 0.05,
       );
       head.add(curtain);
     } else if (s === 'ponytail') {
@@ -646,8 +569,8 @@ export function createCinema(canvas, flashEl) {
   }
   function shock(x, z, col = 0xdfe6ff, y = 0.06) {
     const m = new THREE.Mesh(
-      new THREE.RingGeometry(0.2, 0.28, 48),
-      new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.9, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }),
+        new THREE.RingGeometry(0.2, 0.28, 48),
+        new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.9, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }),
     );
     m.rotation.x = -PI / 2;
     m.position.set(x, y, z);
@@ -674,8 +597,8 @@ export function createCinema(canvas, flashEl) {
     const c = new THREE.CatmullRomCurve3(pts);
     const g = new THREE.Group();
     g.add(
-      new THREE.Mesh(new THREE.TubeGeometry(c, 50, w, 5), new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false })),
-      new THREE.Mesh(new THREE.TubeGeometry(c, 50, w * 4, 6), glowMat(0x8fb0ff, 0.35)),
+        new THREE.Mesh(new THREE.TubeGeometry(c, 50, w, 5), new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false })),
+        new THREE.Mesh(new THREE.TubeGeometry(c, 50, w * 4, 6), glowMat(0x8fb0ff, 0.35)),
     );
     return g;
   }
