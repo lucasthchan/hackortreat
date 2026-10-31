@@ -125,12 +125,24 @@ export function createWorld({ avgAge, population, startCity, now }) {
   };
 }
 
+
 /* ---------- scoring ---------- */
-function scoreReap(person, at) {
+export const DRAW_BONUS = 15; // extra points when the fate was drawn and recognised, not picked from the shelf
+
+/**
+ * Within an hour either side of the appointment: 100.
+ * More than an hour early: 20 (you took time that wasn't yours).
+ * Late: lose 25 points for every hour past the first, down to -20 at 6h.
+ *   (Still better than letting them escape as a ghost, which costs -50 in tick().)
+ */
+export function scoreReap(person, at, { drawn = false } = {}) {
   const diffH = (at - person.deathAt) / HOUR;
-  if (diffH < -1) return { pts: 20, label: 'early, taking time that wasn’t yours' };
-  if (diffH <= 1) return { pts: 100, label: 'right on time' };
-  return { pts: Math.max(30, Math.round(100 - diffH * 12)), label: `${diffH.toFixed(1)}h late` };
+  let s;
+  if (diffH < -1) s = { pts: 20, label: 'early, taking time that wasn’t yours' };
+  else if (diffH <= 1) s = { pts: 100, label: 'right on time' };
+  else s = { pts: Math.max(-20, Math.round(100 - (diffH - 1) * 25)), label: `${diffH.toFixed(1)}h late` };
+  if (drawn) s = { pts: s.pts + DRAW_BONUS, label: `${s.label}, drawn by hand (+${DRAW_BONUS})` };
+  return s;
 }
 
 /* ---------- state transitions (pure: return new world) ---------- */
@@ -140,11 +152,12 @@ export function canReap(person, at) {
 }
 
 /** The reaper travels instantly, so a reap happens wherever and whenever it is night. */
-export function reap(world, personId, toolKey, at) {
+export function reap(world, personId, toolKey, at, opts = {}) {
   const toolName = (TOOLS[toolKey] || toolKey).toLowerCase();
   const person = world.people.find((p) => p.id === personId);
   if (!canReap(person, at)) return { world, result: null };
-  const s = scoreReap(person, at);
+  const s = scoreReap(person, at, opts);
+  const sign = s.pts >= 0 ? '+' : '';
   return {
     world: {
       ...world,
@@ -153,7 +166,7 @@ export function reap(world, personId, toolKey, at) {
       people: world.people.map((p) =>
           p.id === personId ? { ...p, status: 'reaped', reapedAt: at, tool: toolKey } : p,
       ),
-      log: [{ at, text: `Reaped ${person.name} in ${person.city} with ${toolName}, ${s.label} (+${s.pts}).` }, ...world.log].slice(0, 80),
+      log: [{ at, text: `Reaped ${person.name} in ${person.city} with ${toolName}, ${s.label} (${sign}${s.pts}).` }, ...world.log].slice(0, 80),
     },
     result: s,
   };

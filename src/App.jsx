@@ -9,6 +9,7 @@ import DrawPad from './components/DrawPad.jsx';
 import Cinema from './components/Cinema.jsx';
 import MapOverlay from './components/MapOverlay.jsx';
 import { ASSIGNMENT_WINDOW_H, HOUR, canReap, delayDeath, fmtDuration, loadWorld, reap, saveWorld, tick } from './lib/game.js';
+import { buyTool, getBalance, getUnlocked } from './lib/shop.js';
 
 export default function App() {
   const [world, setWorld] = useState(() => loadWorld());
@@ -95,18 +96,26 @@ export default function App() {
     if (!canReap(p, Date.now())) toast('It’s daytime there. The Reaper only works at night.', 'warn');
     else setDrawFor(id);
   };
-  const onUnleash = (tool, saw) => {
+  const onUnleash = (tool, saw, drawn = false) => {
     // the moment of death is when you unleash; the cinematic just shows it
-    setFate({ id: drawFor, tool, saw, at: Date.now(), replay: false });
+    setFate({ id: drawFor, tool, saw, drawn, at: Date.now(), replay: false });
     setDrawFor(null);
+  };
+  const onBuy = (key) => {
+    const res = buyTool(worldRef.current, key);
+    if (res.ok) {
+      setWorld(res.world);
+      toast(res.world.log[0].text, 'good');
+    }
+    return res; // DrawPad shows res.reason if it failed
   };
   const onReaped = () => {
     const f = fateRef.current;
     if (!f || f.replay) return;
-    const { world: next, result } = reap(worldRef.current, f.id, f.tool, f.at);
+    const { world: next, result } = reap(worldRef.current, f.id, f.tool, f.at, { drawn: f.drawn });
     if (result) {
       setWorld(next);
-      toast(`+${result.pts}: ${result.label}`, 'good');
+      toast(`${result.pts >= 0 ? '+' : ''}${result.pts}: ${result.label}`, result.pts > 0 ? 'good' : 'warn');
     }
   };
   const onDelay = (id) => {
@@ -156,6 +165,9 @@ export default function App() {
         <DrawPad
           person={drawPerson}
           canStillReap={() => canReap(drawPerson, Date.now())}
+          unlocked={getUnlocked(world)}
+          balance={getBalance(world)}
+          onBuy={onBuy}
           onUnleash={onUnleash}
           onCancel={() => setDrawFor(null)}
         />
