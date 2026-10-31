@@ -135,16 +135,20 @@ export function sketchToPng(strokes, size = 384) {
  * Shared by the browser (dev mode) and the server, so the prompt lives in one place.
  * `base64` is the PNG data WITHOUT the "data:image/png;base64," prefix.
  */
+const SYSTEM_PROMPT =
+  'You are the eyes of the Grim Reaper in a cartoon Halloween game. The player sketches a way of death with a mouse ' +
+  'or finger, so drawings are rough. Match the sketch to ONE tool from the list. Be generous with rough sketches that ' +
+  'clearly aim at a tool, but if the drawing does not resemble any tool (random scribbles, letters, a smiley, a house, ' +
+  'a flower...) answer "unknown". Never force a match.';
+const toolList = () => TOOL_KEYS.map((k) => `- ${k}: ${TOOL_DEFS[k].name} (looks like: ${TOOL_DEFS[k].hint})`).join('\n');
+const SAW_HINT = 'What the sketch looks like, 2 to 5 words, e.g. "a car with two wheels".';
+
 export function claudeRequestBody(base64) {
-  const list = TOOL_KEYS.map((k) => `- ${k}: ${TOOL_DEFS[k].name} (looks like: ${TOOL_DEFS[k].hint})`).join('\n');
+  const list = toolList();
   return {
     model: CLAUDE_MODEL,
     max_tokens: 200,
-    system:
-      'You are the eyes of the Grim Reaper in a cartoon Halloween game. The player sketches a way of death with a mouse ' +
-      'or finger, so drawings are rough. Match the sketch to ONE tool from the list. Be generous with rough sketches that ' +
-      'clearly aim at a tool, but if the drawing does not resemble any tool (random scribbles, letters, a smiley, a house, ' +
-      'a flower...) answer "unknown". Never force a match.',
+    system: SYSTEM_PROMPT,
     tools: [
       {
         name: 'pick_tool',
@@ -152,7 +156,7 @@ export function claudeRequestBody(base64) {
         input_schema: {
           type: 'object',
           properties: {
-            saw: { type: 'string', description: 'What the sketch looks like, 2 to 5 words, e.g. "a car with two wheels".' },
+            saw: { type: 'string', description: SAW_HINT },
             tool: { type: 'string', enum: [...TOOL_KEYS, 'unknown'] },
           },
           required: ['saw', 'tool'],
@@ -181,15 +185,57 @@ export function parseClaudeReply(data) {
   return { tool: TOOL_DEFS[input.tool] ? input.tool : null, saw };
 }
 
+/* ----- Gemini (Google) version of the same request ----- */
+export const GEMINI_MODEL = 'gemini-3.8-flash';
+export const geminiUrl = (model = GEMINI_MODEL) =>
+  `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+
+/** Body for POST geminiUrl(), with header  x-goog-api-key: <key>. */
+export function geminiRequestBody(base64) {
+  return {
+    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          { inlineData: { mimeType: 'image/png', data: base64 } },
+          { text: `Tools:\n${toolList()}\n\nWhich tool is this sketch?` },
+        ],
+      },
+    ],
+    generationConfig: {
+      temperature: 0,
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: 'OBJECT',
+        properties: {
+          saw: { type: 'STRING', description: SAW_HINT },
+          tool: { type: 'STRING', enum: [...TOOL_KEYS, 'unknown'] },
+        },
+        required: ['saw', 'tool'],
+      },
+    },
+  };
+}
+
+/** Gemini's raw reply → { tool, saw }. tool is null when the sketch is unrecognizable. */
+export function parseGeminiReply(data) {
+  const text = data?.candidates?.[0]?.content?.parts?.find?.((p) => p.text)?.text;
+  if (!text) throw new Error('Gemini gave no answer');
+  const input = JSON.parse(text);
+  return { tool: TOOL_DEFS[input.tool] ? input.tool : null, saw: String(input.saw || '').slice(0, 60) };
+}
+
 /**
- * Ask Claude what the sketch is.
+ * Ask the AI (Claude or Gemini) what the sketch is.
  *   → { tool: 'car_crash', saw: 'a small car', via: 'claude' }   recognised
  *   → { tool: null, saw: 'a smiley face', via: 'claude' }        Claude looked, it's not a tool
  *   → null                                                        Claude can't be reached → use classify()
  *
  * Route 1 (normal): POST /api/recognize on our own server, which holds the API key.
- * Route 2 (dev only): if VITE_ANTHROPIC_API_KEY is set in .env.local, call Anthropic straight from
- *   the browser. `import.meta.env.DEV` is false in `npm run build`, so the key never ships.
+ * Route 2 (dev only): a key in .env.local calls the AI straight from the browser:
+ *   VITE_GEMINI_API_KEY → Gemini, VITE_ANTHROPIC_API_KEY → Claude.
+ *   `import.meta.env.DEV` is false in `npm run build`, so the key never ships.
  */
 export async function readSketchWithClaude(strokes) {
   const image = sketchToPng(strokes);
@@ -207,6 +253,24 @@ export async function readSketchWithClaude(strokes) {
     }
   } catch {
     /* no server running: try the dev route */
+  }
+
+  if (import.meta.env.DEV && import.meta.env.VITE_GEMINI_API_KEY) {
+    try {
+      const res = await fetch(geminiUrl(), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': import.meta.env.VITE_GEMINI_API_KEY },
+        body: JSON.stringify(geminiRequestBody(base64)),
+      });
+      if (!res.ok) {
+        console.warn('[sketch] Gemini API error', res.status, await res.text());
+        return null;
+      }
+      return { ...parseGeminiReply(await res.json()), via: 'gemini' };
+    } catch (e) {
+      console.warn('[sketch] Gemini API unreachable', e);
+      return null;
+    }
   }
 
   if (import.meta.env.DEV && import.meta.env.VITE_ANTHROPIC_API_KEY) {
