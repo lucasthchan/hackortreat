@@ -227,15 +227,14 @@ export function parseGeminiReply(data) {
 }
 
 /**
- * Ask the AI (Claude or Gemini) what the sketch is.
+ * Ask Claude what the sketch is.
  *   → { tool: 'car_crash', saw: 'a small car', via: 'claude' }   recognised
  *   → { tool: null, saw: 'a smiley face', via: 'claude' }        Claude looked, it's not a tool
  *   → null                                                        Claude can't be reached → use classify()
  *
  * Route 1 (normal): POST /api/recognize on our own server, which holds the API key.
- * Route 2 (dev only): a key in .env.local calls the AI straight from the browser:
- *   VITE_GEMINI_API_KEY → Gemini, VITE_ANTHROPIC_API_KEY → Claude.
- *   `import.meta.env.DEV` is false in `npm run build`, so the key never ships.
+ * Route 2 (dev only): if VITE_ANTHROPIC_API_KEY is set in .env.local, call Anthropic straight from
+ *   the browser. `import.meta.env.DEV` is false in `npm run build`, so the key never ships.
  */
 export async function readSketchWithClaude(strokes) {
   const image = sketchToPng(strokes);
