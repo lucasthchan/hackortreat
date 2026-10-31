@@ -9,32 +9,69 @@ import { addStars, createTweens, ease, ll2v } from '../lib/geo3d.js';
 
 const LAND = feature(land110, land110.objects.land);
 
-/** Real coastlines painted onto an equirectangular canvas, used as the globe's texture. */
+/**
+ * Earth data texture (equirectangular). Channels are masks the shader colours:
+ *   R = land, G = dotted "city light" grid on land, B = coastlines (+ faint graticule).
+ */
 function makeEarthTexture() {
   const W = 2048;
   const H = 1024;
+  const proj = geoEquirectangular().scale(W / (2 * Math.PI)).translate([W / 2, H / 2]);
+
+  // land mask, used to decide where dots go
+  const m = document.createElement('canvas');
+  m.width = W;
+  m.height = H;
+  const mctx = m.getContext('2d');
+  mctx.fillStyle = '#fff';
+  mctx.beginPath();
+  geoPath(proj, mctx)(LAND);
+  mctx.fill();
+  const mask = mctx.getImageData(0, 0, W, H).data;
+  const isLand = (x, y) => mask[(Math.min(H - 1, Math.max(0, y | 0)) * W + Math.min(W - 1, Math.max(0, x | 0))) * 4] > 128;
+
   const c = document.createElement('canvas');
   c.width = W;
   c.height = H;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = '#141638';
+  ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
-  const proj = geoEquirectangular().scale(W / (2 * Math.PI)).translate([W / 2, H / 2]);
+  ctx.globalCompositeOperation = 'lighter';
   const path = geoPath(proj, ctx);
+
+  ctx.beginPath();
+  path(LAND);
+  ctx.fillStyle = 'rgb(255,0,0)';
+  ctx.fill();
+
+  // dot grid, spaced evenly on the sphere (wider in x near the poles)
+  ctx.fillStyle = 'rgb(0,255,0)';
+  const step = 7;
+  for (let y = step / 2; y < H; y += step) {
+    const lat = (0.5 - y / H) * Math.PI;
+    const sx = step / Math.max(0.15, Math.cos(lat));
+    const off = (Math.round(y / step) % 2) * sx * 0.5;
+    for (let x = off; x < W; x += sx) {
+      if (!isLand(x, y)) continue;
+      ctx.beginPath();
+      ctx.arc(x, y, 1.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
   ctx.beginPath();
   path(geoGraticule10());
-  ctx.strokeStyle = 'rgba(160,150,220,0.08)';
+  ctx.strokeStyle = 'rgb(0,0,45)';
   ctx.lineWidth = 1;
   ctx.stroke();
   ctx.beginPath();
   path(LAND);
-  ctx.fillStyle = '#5b4a78';
-  ctx.fill();
-  ctx.strokeStyle = '#8a76ad';
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = 'rgb(0,0,255)';
+  ctx.lineWidth = 2;
   ctx.stroke();
+
   const tex = new THREE.CanvasTexture(c);
-  tex.anisotropy = 4;
+  tex.anisotropy = 8;
   return tex;
 }
 
@@ -47,9 +84,12 @@ const COLORS = {
 };
 const DAY_DIM = new THREE.Color(0x4a4458);
 
-export default function Globe({ world, now, selectedId, onSelect, paused }) {
+export default function Globe({ world, now, selectedId, onSelect, paused, markedIds = [], hidePins = false }) {
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
+  const leaderRef = useRef(null);
+  const markersRef = useRef(null);
+  const flashRef = useRef(null);
   const api = useRef(null);
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
@@ -66,26 +106,46 @@ export default function Globe({ world, now, selectedId, onSelect, paused }) {
 
     const globe = new THREE.Group();
     scene.add(globe);
-    const U = { map: { value: makeEarthTexture() }, sun: { value: new THREE.Vector3(1, 0, 0) } };
+    const U = { map: { value: makeEarthTexture() }, sun: { value: new THREE.Vector3(1, 0, 0) }, time: { value: 0 } };
     globe.add(
       new THREE.Mesh(
-        new THREE.SphereGeometry(1, 96, 64),
+        new THREE.SphereGeometry(1, 128, 96),
         new THREE.ShaderMaterial({
           uniforms: U,
-          vertexShader:
-            'varying vec2 vUv;varying vec3 vP;void main(){vUv=uv;vP=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-          fragmentShader: `uniform sampler2D map;uniform vec3 sun;varying vec2 vUv;varying vec3 vP;
-            void main(){vec3 t=texture2D(map,vUv).rgb;float d=dot(normalize(vP),sun);float day=smoothstep(-.06,.1,d);
-            vec3 night=t*vec3(.55,.5,.95)+vec3(0.,0.,.02);
-            vec3 dc=t*vec3(1.5,1.38,1.1)+vec3(.07,.05,.0);
-            vec3 col=mix(night,dc,day);col+=vec3(.9,.3,.5)*exp(-abs(d)*40.)*.35;gl_FragColor=vec4(col,1.);}`,
+          vertexShader: `varying vec2 vUv;varying vec3 vP;varying vec3 vN;
+            void main(){vUv=uv;vP=position;vN=normalize(normalMatrix*normal);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+          fragmentShader: `uniform sampler2D map;uniform vec3 sun;uniform float time;varying vec2 vUv;varying vec3 vP;varying vec3 vN;
+            float hash(vec3 p){return fract(sin(dot(p,vec3(12.9898,78.233,45.164)))*43758.5453);}
+            void main(){
+              vec4 t=texture2D(map,vUv);
+              float land=t.r, dots=t.g, line=t.b;
+              float d=dot(normalize(vP),sun);
+              float day=smoothstep(-.08,.12,d);
+              // night side: near-black land, crimson coasts, flickering red city lights
+              float flick=.55+.45*hash(floor(vP*180.));
+              flick*=.85+.15*sin(time*1.7+hash(floor(vP*60.))*6.28);
+              vec3 night=vec3(.012,.008,.02)+land*vec3(.05,.025,.04)
+                +line*vec3(.75,.12,.2)
+                +dots*flick*vec3(1.,.22,.26)*.95;
+              // day side: muted violet-grey, dots and coasts faint
+              vec3 dayc=vec3(.05,.045,.09)+land*vec3(.17,.14,.2)
+                +line*vec3(.42,.36,.5)
+                +dots*vec3(.28,.25,.32);
+              vec3 col=mix(night,dayc,day);
+              // ember glow along the dusk line
+              col+=vec3(1.,.35,.2)*exp(-abs(d)*28.)*.32;
+              // rim light
+              float rim=pow(1.-max(dot(vN,vec3(0.,0.,1.)),0.),3.);
+              col+=mix(vec3(.75,.1,.22),vec3(.55,.45,.85),day)*rim*.55;
+              gl_FragColor=vec4(col,1.);
+            }`,
         }),
       ),
     );
-    // atmosphere glow
+    // atmosphere glow: crimson on the night side, violet by day
     scene.add(
       new THREE.Mesh(
-        new THREE.SphereGeometry(1.12, 64, 48),
+        new THREE.SphereGeometry(1.14, 64, 48),
         new THREE.ShaderMaterial({
           side: THREE.BackSide,
           transparent: true,
@@ -94,18 +154,45 @@ export default function Globe({ world, now, selectedId, onSelect, paused }) {
           vertexShader:
             'varying vec3 vN;void main(){vN=normalize(normalMatrix*normal);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
           fragmentShader:
-            'varying vec3 vN;void main(){float i=pow(clamp(-dot(vN,vec3(0.,0.,1.))*2.2,0.,1.),2.)*.7;gl_FragColor=vec4(.5,.3,.9,1.)*i;}',
+            'varying vec3 vN;void main(){float i=pow(clamp(-dot(vN,vec3(0.,0.,1.))*2.4,0.,1.),2.4)*.85;gl_FragColor=vec4(.8,.16,.3,1.)*i;}',
         }),
       ),
     );
+    // a faint 24-hour dial around the globe (a clock for Death)
+    const dial = new THREE.Group();
+    {
+      const pts = [];
+      const R = 1.3;
+      for (let i = 0; i < 360; i += 2) {
+        const a0 = (i * Math.PI) / 180;
+        const a1 = ((i + 1.2) * Math.PI) / 180; // dashed circle
+        pts.push(Math.cos(a0) * R, Math.sin(a0) * R, 0, Math.cos(a1) * R, Math.sin(a1) * R, 0);
+      }
+      for (let h = 0; h < 24; h++) {
+        const a = (h / 24) * Math.PI * 2;
+        const r0 = h % 6 === 0 ? 1.34 : 1.32;
+        pts.push(Math.cos(a) * 1.3, Math.sin(a) * 1.3, 0, Math.cos(a) * r0 * 1.02, Math.sin(a) * r0 * 1.02, 0);
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+      dial.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0xd9b36a, transparent: true, opacity: 0.22 })));
+    }
+    scene.add(dial);
     addStars(scene);
 
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(0.022, 0.03, 32),
-      new THREE.MeshBasicMaterial({ color: 0xefe6d2, side: THREE.DoubleSide }),
+      new THREE.MeshBasicMaterial({ color: 0xff5a64, side: THREE.DoubleSide, transparent: true, opacity: 0.9 }),
     );
     ring.visible = false;
     globe.add(ring);
+    // a light beam rising from the selected soul
+    const beam = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.0035, 0.0035, 0.32, 8, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0xff4a5a, transparent: true, opacity: 0.75, blending: THREE.AdditiveBlending, depthWrite: false }),
+    );
+    beam.visible = false;
+    globe.add(beam);
 
     // the reaper's marker: a little hooded cone standing on the globe
     const reaper = new THREE.Group();
@@ -215,11 +302,107 @@ export default function Globe({ world, now, selectedId, onSelect, paused }) {
       const idle = !drag && !busy && !state.selected && t - lastInteract > 4000;
       if (idle && !reduce) globe.quaternion.premultiply(spin);
       glow.material.opacity = 0.35 + 0.15 * Math.sin(t / 400);
+      U.time.value = t / 1000;
+      if (!reduce) dial.rotation.z = -t / 60000;
+      if (ring.visible) ring.scale.setScalar(1 + 0.35 * (0.5 + 0.5 * Math.sin(t / 260)));
+      beam.material.opacity = 0.55 + 0.25 * Math.sin(t / 300);
       renderer.render(scene, camera);
+      drawLeader();
+      drawMarkers();
     }
     raf = requestAnimationFrame(loop);
 
-    api.current = { U, dots, dGeo, globe, ring, reaper, face, faceQuat, state, oriented: false };
+    /* leader line: from the selected soul's dot to the target card on the left */
+    const tmp = new THREE.Vector3();
+    function drawLeader() {
+      const svg = leaderRef.current;
+      if (!svg) return;
+      const path = svg.querySelector('path');
+      const dot = svg.querySelector('circle');
+      const m = state.selected && dots.get(state.selected);
+      const card = m && wrapRef.current.parentElement.querySelector('.ov-frame');
+      if (!m || !card) {
+        svg.style.opacity = 0;
+        return;
+      }
+      globe.localToWorld(tmp.copy(m.position));
+      const facing = tmp.clone().normalize().dot(camera.position.clone().normalize());
+      const wr = wrapRef.current.getBoundingClientRect();
+      tmp.project(camera);
+      const x = ((tmp.x + 1) / 2) * wr.width;
+      const y = ((1 - tmp.y) / 2) * wr.height;
+      const cr = card.getBoundingClientRect();
+      const ax = cr.right - wr.left + 6;
+      const ay = cr.top - wr.top + cr.height * 0.5;
+      const kx = ax + Math.max(24, (x - ax) * 0.35); // elbow
+      path.setAttribute('d', `M${ax},${ay} H${kx} L${x},${y}`);
+      dot.setAttribute('cx', x);
+      dot.setAttribute('cy', y);
+      svg.style.opacity = facing > 0.15 && x > ax + 30 ? 1 : 0;
+    }
+
+    /* floating pins over the 5 most urgent souls (HTML, positioned every frame) */
+    const mv = new THREE.Vector3();
+    function drawMarkers() {
+      const box = markersRef.current;
+      if (!box) return;
+      const wr = wrapRef.current.getBoundingClientRect();
+      const camDir = camera.position.clone().normalize();
+      box.querySelectorAll('.gm').forEach((el) => {
+        const m = dots.get(el.dataset.id);
+        if (!m) {
+          el.style.opacity = 0;
+          return;
+        }
+        globe.localToWorld(mv.copy(m.position));
+        const facing = mv.clone().normalize().dot(camDir);
+        mv.project(camera);
+        const x = ((mv.x + 1) / 2) * wr.width;
+        const y = ((1 - mv.y) / 2) * wr.height;
+        el.style.transform = `translate(${x}px, ${y}px)`;
+        const show = facing > 0.12;
+        el.style.opacity = show ? Math.min(1, (facing - 0.12) * 6) : 0;
+        el.style.pointerEvents = show ? 'auto' : 'none';
+        el.style.zIndex = Math.round(facing * 100);
+      });
+    }
+
+    /* click effect: shockwave rings on the surface + camera punch-in */
+    const waveGeo = new THREE.RingGeometry(0.03, 0.038, 48);
+    function burst(v) {
+      for (let i = 0; i < 3; i++) {
+        const w = new THREE.Mesh(
+          waveGeo,
+          new THREE.MeshBasicMaterial({ color: i === 1 ? 0xffc06a : 0xff3b4e, transparent: true, opacity: 0.95, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }),
+        );
+        w.position.copy(v).multiplyScalar(1.01);
+        w.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), v);
+        globe.add(w);
+        setTimeout(() => {
+          tweens.anim(1.1, (k) => {
+            w.scale.setScalar(1 + ease(k) * 9);
+            w.material.opacity = 0.95 * (1 - k);
+          }).then(() => {
+            globe.remove(w);
+            w.material.dispose();
+          });
+        }, i * 160);
+      }
+      if (!reduce) {
+        const z0 = camera.position.z;
+        const zIn = Math.max(1.7, z0 * 0.72);
+        tweens.anim(0.55, (k) => { camera.position.z = z0 + (zIn - z0) * ease(k); })
+          .then(() => tweens.anim(0.8, (k) => { camera.position.z = zIn + (z0 * 0.9 - zIn) * ease(k); }));
+      }
+      const f = flashRef.current;
+      if (f) {
+        f.classList.remove('on');
+        void f.offsetWidth; // restart the animation
+        f.classList.add('on');
+      }
+    }
+
+    api.current = { U, dots, dGeo, globe, ring, beam, reaper, face, faceQuat, state, burst, oriented: false };
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
@@ -289,12 +472,16 @@ export default function Globe({ world, now, selectedId, onSelect, paused }) {
     a.state.selected = p ? p.id : null;
     if (!p) {
       a.ring.visible = false;
+      a.beam.visible = false;
       return;
     }
     const v = ll2v(p.lat, p.lon);
     a.ring.position.copy(v).multiplyScalar(1.008);
     a.ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), v);
     a.ring.visible = true;
+    a.beam.position.copy(v).multiplyScalar(1.16);
+    a.beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), v);
+    a.beam.visible = true;
     a.face(v);
     // only re-run when the selection changes, not every tick
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -304,6 +491,16 @@ export default function Globe({ world, now, selectedId, onSelect, paused }) {
     if (api.current) api.current.state.paused = !!paused;
   }, [paused]);
 
+  const onMarker = (id, el) => {
+    el.classList.remove('is-burst');
+    void el.offsetWidth;
+    el.classList.add('is-burst');
+    setTimeout(() => el.classList.remove('is-burst'), 900);
+    const p = world.people.find((x) => x.id === id);
+    if (p && api.current) api.current.burst(ll2v(p.lat, p.lon));
+    onSelect(id);
+  };
+
   return (
     <div className="globe" ref={wrapRef}>
       <canvas
@@ -311,6 +508,44 @@ export default function Globe({ world, now, selectedId, onSelect, paused }) {
         role="img"
         aria-label="Globe of scheduled deaths with live day and night. Drag to turn, scroll to zoom, click a dot to choose someone."
       />
+      <div className="globe-flash" ref={flashRef} aria-hidden="true" />
+      <div className={`gm-layer ${hidePins ? 'is-hidden' : ''}`} ref={markersRef}>
+        {markedIds.map((id, i) => {
+          const p = world.people.find((x) => x.id === id);
+          if (!p) return null;
+          const over = p.deathAt <= now;
+          const night = isNight(p.lat, p.lon, new Date(now));
+          return (
+            <button
+              key={id}
+              data-id={id}
+              className={`gm ${over ? 'is-over' : ''} ${night ? '' : 'is-day'} ${id === selectedId ? 'is-on' : ''}`}
+              style={{ opacity: 0 }}
+              onClick={(e) => onMarker(id, e.currentTarget)}
+              aria-label={`Target ${i + 1}: ${p.name}, ${p.city}`}
+            >
+              <span className="gm-float">
+                <span className="gm-pin">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M7 21 L15 4" />
+                    <path d="M14.5 5 C18 3.6 21.5 5.8 22 9.5 C19.4 7.6 16.6 7.2 13.6 7.1" />
+                  </svg>
+                  <span className="gm-rank">{i + 1}</span>
+                </span>
+                <span className="gm-name">{p.name}</span>
+              </span>
+              <span className="gm-base" />
+              <span className="gm-sparks" aria-hidden="true">
+                {Array.from({ length: 12 }, (_, k) => <i key={k} style={{ '--a': `${k * 30}deg` }} />)}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <svg className="leader" ref={leaderRef} aria-hidden="true">
+        <path />
+        <circle r="5" />
+      </svg>
       <div className="map-legend">
         <span><i className="lg lg-due" /> Due now</span>
         <span><i className="lg lg-soon" /> Next 24h</span>

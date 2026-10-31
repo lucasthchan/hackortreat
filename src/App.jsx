@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Setup from './components/Setup.jsx';
 import Globe from './components/Globe.jsx';
-import SoulList from './components/SoulList.jsx';
-import SoulPanel from './components/SoulPanel.jsx';
+import TargetScroll from './components/TargetScroll.jsx';
+import StatBar from './components/StatBar.jsx';
+import NextTargets from './components/NextTargets.jsx';
 import Hud from './components/Hud.jsx';
 import DrawPad from './components/DrawPad.jsx';
 import Cinema from './components/Cinema.jsx';
-import { canReap, delayDeath, fmtDuration, loadWorld, reap, saveWorld, tick } from './lib/game.js';
+import MapOverlay from './components/MapOverlay.jsx';
+import { ASSIGNMENT_WINDOW_H, HOUR, canReap, delayDeath, fmtDuration, loadWorld, reap, saveWorld, tick } from './lib/game.js';
 import { buyTool, getBalance, getUnlocked } from './lib/shop.js';
 
 export default function App() {
@@ -16,6 +18,8 @@ export default function App() {
   const [drawFor, setDrawFor] = useState(null); // person id with the draw dialog open
   const [fate, setFate] = useState(null); // { id, tool, saw, at, replay }
   const [toasts, setToasts] = useState([]);
+  const [notes, setNotes] = useState([]); // "new target assigned" banners
+  const assignedRef = useRef(null); // ids already on the reaper's list
   const worldRef = useRef(world);
   worldRef.current = world;
   const fateRef = useRef(fate);
@@ -45,6 +49,39 @@ export default function App() {
   }, [now, toast, drawFor]);
 
   useEffect(() => saveWorld(world), [world]);
+
+  // Esc closes the target card (unless the to-do list or a dialog is open; those handle Esc themselves)
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== 'Escape' || drawFor || fateRef.current) return;
+      if (document.querySelector('.scroll-backdrop')) return;
+      setSelectedId(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [drawFor]);
+
+  // Announce souls that newly enter the reaper's 24h list.
+  useEffect(() => {
+    if (!world) { assignedRef.current = null; return; }
+    const horizon = now + ASSIGNMENT_WINDOW_H * HOUR;
+    const due = world.people.filter((p) => p.status === 'alive' && p.deathAt <= horizon);
+    if (assignedRef.current) {
+      const fresh = due.filter((p) => !assignedRef.current.has(p.id));
+      fresh.slice(0, 3).forEach((p) => {
+        const id = Math.random();
+        setNotes((n) => [...n, { id, name: p.name, city: p.city }].slice(-3));
+        setTimeout(() => setNotes((n) => n.filter((x) => x.id !== id)), 6000);
+      });
+    }
+    assignedRef.current = new Set(due.map((p) => p.id)); // first pass only records, no banners
+  }, [world, now]);
+
+  // the 5 most urgent souls get pins on the globe (same as the top-right tracker)
+  const topKey = world
+    ? world.people.filter((p) => p.status === 'alive').sort((a, b) => a.deathAt - b.deathAt).slice(0, 5).map((p) => p.id).join(',')
+    : '';
+  const topIds = useMemo(() => (topKey ? topKey.split(',') : []), [topKey]);
 
   const selected = useMemo(() => world?.people.find((p) => p.id === selectedId) ?? null, [world, selectedId]);
   const drawPerson = useMemo(() => world?.people.find((p) => p.id === drawFor) ?? null, [world, drawFor]);
@@ -87,6 +124,7 @@ export default function App() {
       setWorld(next);
       toast(`Granted ${fmtDuration(delayMs)} more life.`, 'info');
     }
+    return delayMs;
   };
   const onReplay = (id) => {
     const p = world.people.find((x) => x.id === id);
@@ -100,24 +138,27 @@ export default function App() {
   return (
     <div className="app">
       <Hud world={world} now={now} onReset={onReset} />
-      <main className="main">
+      <main className="main no-side">
         <section className="map-wrap" aria-label="Globe">
-          <Globe world={world} now={now} selectedId={selectedId} onSelect={setSelectedId} paused={!!fate} />
+          <Globe world={world} now={now} selectedId={selectedId} onSelect={setSelectedId} paused={!!fate} markedIds={topIds} hidePins={!!drawFor || !!fate} />
+          <MapOverlay person={selected} now={now} onAccept={onKill} onDelay={onDelay} onReplay={onReplay} onClose={() => setSelectedId(null)} />
+          <TargetScroll world={world} now={now} onSelect={setSelectedId} />
+          <div className="top-right">
+            <StatBar world={world} now={now} />
+            <NextTargets world={world} now={now} selectedId={selectedId} onSelect={setSelectedId} />
+          </div>
+          <div className="notes" role="status" aria-live="polite">
+            {notes.map((n) => (
+              <div key={n.id} className="note-banner">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 6h10l3 3v10H4z M7 11h7 M7 15h7" />
+                  <path d="M15 17 L21 3" />
+                </svg>
+                <span>New <em>Target</em> assigned: {n.name}, {n.city}</span>
+              </div>
+            ))}
+          </div>
         </section>
-        <aside className="sidebar">
-          {selected ? (
-            <SoulPanel
-              person={selected}
-              now={now}
-              onClose={() => setSelectedId(null)}
-              onKill={onKill}
-              onDelay={onDelay}
-              onReplay={onReplay}
-            />
-          ) : (
-            <SoulList world={world} now={now} onSelect={setSelectedId} />
-          )}
-        </aside>
       </main>
 
       {drawPerson && (
