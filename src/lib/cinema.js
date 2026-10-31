@@ -9,22 +9,21 @@ const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const rnd = (a, b) => a + R.random() * (b - a);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const SKIN = [0xf1c7a5, 0xd9a27a, 0xb87a52, 0x8a5638, 0x5e3a26, 0xf6d6bd];
-const HAIR = [0x1a1210, 0x4a2c17, 0x8a5a2a, 0xc9a14a, 0xb5b5b5, 0x7a2a1a];
-const CL = [0x3a5a8a, 0x7a2a4a, 0x2f6a4a, 0xb06a2a, 0x5a4a8a, 0x8a8a3a, 0x2a2a3a, 0xa04040];
+const HAIR_STYLES = ['bald', 'short', 'long'];
+const toColor = (hex) => parseInt(String(hex).replace('#', ''), 16);
 
-/** Stable looks for a person, derived from their id so replays look the same. */
-export function appearance(id) {
-  let a = 0;
-  for (const ch of String(id)) a = (Math.imul(a, 31) + ch.charCodeAt(0)) | 0;
-  const r = () => {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+/** The person's look from the database, in the shape makePerson expects. */
+export function appearance(person) {
+  const l = person.look ?? {};
+  return {
+    skin: toColor(l.skin ?? '#d9a27a'),
+    hair: toColor(l.hair ?? '#4a2c17'),
+    hs: Math.max(0, HAIR_STYLES.indexOf(l.hairStyle ?? 'short')),
+    shirt: toColor(l.shirt ?? '#3a5a8a'),
+    pants: toColor(l.pants ?? '#2a2a3a'),
+    h: l.height ?? 1,
+    w: l.build ?? 1,
   };
-  const pick = (arr) => arr[Math.floor(r() * arr.length)];
-  return { skin: pick(SKIN), hair: pick(HAIR), hs: Math.floor(r() * 3), shirt: pick(CL), pants: pick(CL), h: 0.9 + r() * 0.2, w: 0.85 + r() * 0.35 };
 }
 
 export function createCinema(canvas, flashEl) {
@@ -369,7 +368,7 @@ export function createCinema(canvas, flashEl) {
     moon.material.color.set(0xe9eeff);
     halo.material.opacity = 0.14;
     cscene.background.set(0x0b0616);
-    const per = add(makePerson(appearance(person.id)));
+    const per = add(makePerson(appearance(person)));
     const u = per.userData;
     const rp = add(new THREE.Group());
     const rg = makeReaper();

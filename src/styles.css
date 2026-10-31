@@ -67,8 +67,8 @@ strong { font-weight: 600; color: var(--bone); }
   place-items: center;
   padding: 32px 16px;
   background:
-    radial-gradient(ellipse at 50% -10%, #2a2140 0%, transparent 60%),
-    var(--bg);
+          radial-gradient(ellipse at 50% -10%, #2a2140 0%, transparent 60%),
+          var(--bg);
 }
 .setup-card {
   width: 100%;
@@ -100,6 +100,7 @@ select { width: 100%; padding: 9px 10px; background: var(--panel-2); border: 1px
 .bell-line { fill: none; stroke: var(--bone); stroke-width: 1.5; }
 .bell-mark { stroke: var(--blood); stroke-width: 1.5; stroke-dasharray: 3 3; }
 .bell text { fill: var(--faint); font: 10px var(--font-mono); }
+.bell .bell-note { fill: var(--muted); font: 10px var(--font-body); }
 .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .seg button { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 6px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .seg button small { font-size: 11px; color: var(--faint); }
@@ -254,6 +255,7 @@ select { width: 100%; padding: 9px 10px; background: var(--panel-2); border: 1px
 .flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
 .cinema-cap { position: absolute; top: 18px; left: 0; right: 0; text-align: center; margin: 0; font-family: var(--font-display); font-size: 15px; letter-spacing: .08em; color: rgba(239,230,207,.7); text-shadow: 0 1px 8px #000; }
 .cinema-end { position: absolute; left: 0; right: 0; bottom: 28px; padding: 0 16px; text-align: center; text-shadow: 0 1px 8px #000; animation: rise .4s ease-out; }
+.cinema-end p { font-family: var(--font-display); font-size: clamp(17px, 2.6vw, 22px); max-width: 44ch; margin: 0 auto 14px; color: var(--bone); text-wrap: balance; }
 .cinema-end p { font-family: var(--font-display); font-size: clamp(17px, 2.6vw, 22px); max-width: 44ch; margin: 0 auto 14px; color: var(--bone); text-wrap: balance; }
 
 /* ---------- map overlay (place card, target card, notifications) ---------- */

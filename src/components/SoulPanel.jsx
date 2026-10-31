@@ -36,6 +36,14 @@ export default function SoulPanel({ person: p, now, onClose, onReplay }) {
       </header>
 
 
+      <dl className="facts">
+        <div><dt>Born</dt><dd>{dateFmt('UTC', p.birthAt)}</dd></div>
+        <div><dt>Age</dt><dd>{ageAt(p, Math.min(now, p.reapedAt ?? now))}</dd></div>
+        <div><dt>Appointed</dt><dd>{dateTimeFmt(p.tz, p.deathAt)}</dd></div>
+        <div><dt>Age at death</dt><dd>{((p.deathAt - p.birthAt) / (365.2425 * 86400000)).toFixed(1)}</dd></div>
+        <div><dt>Local time</dt><dd>{localTime(p.tz, now)}</dd></div>
+        <div><dt>Delays used</dt><dd>{p.delays} / {MAX_DELAYS}</dd></div>
+      </dl>
 
       {alive && killBlock && <p className="note note-warn">{killBlock}</p>}
       {alive && !killBlock && until > HOUR && (
