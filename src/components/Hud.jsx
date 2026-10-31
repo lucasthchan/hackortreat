@@ -1,9 +1,6 @@
 import { useEffect, useState } from 'react';
 
 export default function Hud({ world, now, onReset }) {
-  const reaped = world.people.filter((p) => p.status === 'reaped').length;
-  const lost = world.people.filter((p) => p.status === 'lost').length;
-  const due = world.people.filter((p) => p.status === 'alive' && p.deathAt <= now).length;
   const d = new Date(now);
   const [arm, setArm] = useState(false);
   useEffect(() => {
@@ -27,13 +24,6 @@ export default function Hud({ world, now, onReset }) {
       <div className="hud-status">
         Last seen in <strong>{world.reaper.place}</strong>
       </div>
-
-      <dl className="stats">
-        <div><dt>Score</dt><dd className="mono">{world.score}</dd></div>
-        <div><dt>Due</dt><dd className={`mono ${due ? 'hot' : ''}`}>{due}</dd></div>
-        <div><dt>Reaped</dt><dd className="mono">{reaped}</dd></div>
-        <div><dt>Ghosts</dt><dd className="mono">{lost}</dd></div>
-      </dl>
 
       <button
         className={`btn btn-sm ${arm ? 'btn-kill' : 'btn-ghost'}`}
